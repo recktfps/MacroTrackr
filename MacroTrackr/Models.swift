@@ -13,7 +13,14 @@ struct UserProfile: Codable, Identifiable {
     var profileImageURL: String?
     
     enum CodingKeys: String, CodingKey {
-        case id, displayName, email, dailyGoals, isPrivate, createdAt, favoriteMeals, profileImageURL
+        case id
+        case displayName = "display_name"
+        case email
+        case dailyGoals = "daily_goals"
+        case isPrivate = "is_private"
+        case createdAt = "created_at"
+        case favoriteMeals = "favorite_meals"
+        case profileImageURL = "profile_image_url"
     }
 }
 
@@ -56,7 +63,16 @@ struct Meal: Codable, Identifiable {
     var isFavorite: Bool = false
     
     enum CodingKeys: String, CodingKey {
-        case id, userId, name, imageURL, ingredients, cookingInstructions, macros, createdAt, mealType, isFavorite
+        case id
+        case userId = "user_id"
+        case name
+        case imageURL = "image_url"
+        case ingredients
+        case cookingInstructions = "cooking_instructions"
+        case macros
+        case createdAt = "created_at"
+        case mealType = "meal_type"
+        case isFavorite = "is_favorite"
     }
 }
 
@@ -73,7 +89,16 @@ struct SavedMeal: Codable, Identifiable {
     let createdAt: Date
     
     enum CodingKeys: String, CodingKey {
-        case id, userId, originalMealId, name, imageURL, ingredients, cookingInstructions, macros, isFavorite, createdAt
+        case id
+        case userId = "user_id"
+        case originalMealId = "original_meal_id"
+        case name
+        case imageURL = "image_url"
+        case ingredients
+        case cookingInstructions = "cooking_instructions"
+        case macros
+        case isFavorite = "is_favorite"
+        case createdAt = "created_at"
     }
 }
 

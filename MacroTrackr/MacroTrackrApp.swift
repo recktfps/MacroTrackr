@@ -55,6 +55,8 @@ class AuthenticationManager: ObservableObject {
                     self.isAuthenticated = true
                     self.currentUser = session.user
                 }
+                // Try to create profile if it doesn't exist
+                try await createUserProfileIfNeeded()
             } catch {
                 await MainActor.run {
                     self.isAuthenticated = false
@@ -70,26 +72,45 @@ class AuthenticationManager: ObservableObject {
         
         let response = try await supabase.auth.signUp(email: email, password: password)
         
-        let user = response.user
-        
-        // Create user profile
-        let profile = UserProfile(
-            id: user.id.uuidString,
-            displayName: displayName,
-            email: email,
-            dailyGoals: MacroGoals(),
-            isPrivate: false,
-            createdAt: Date()
-        )
-        
-        try await supabase
-            .from("profiles")
-            .insert(profile)
-            .execute()
-        
+        // Create user profile - this will be handled by the database trigger or we'll create it after sign in
         await MainActor.run {
             self.isAuthenticated = true
             self.currentUser = response.user
+        }
+        
+        // Store display name for later profile creation
+        UserDefaults.standard.set(displayName, forKey: "pendingDisplayName")
+    }
+    
+    private func createUserProfileIfNeeded() async throws {
+        guard let user = currentUser else { return }
+        
+        // Check if profile already exists
+        let existingProfiles: [UserProfile] = try await supabase
+            .from("profiles")
+            .select()
+            .eq("id", value: user.id.uuidString)
+            .execute()
+            .value
+        
+        if existingProfiles.isEmpty {
+            // Create profile if it doesn't exist
+            let displayName = UserDefaults.standard.string(forKey: "pendingDisplayName") ?? "User"
+            UserDefaults.standard.removeObject(forKey: "pendingDisplayName")
+            
+            let profile = UserProfile(
+                id: user.id.uuidString,
+                displayName: displayName,
+                email: user.email ?? "",
+                dailyGoals: MacroGoals(),
+                isPrivate: false,
+                createdAt: Date()
+            )
+            
+            try await supabase
+                .from("profiles")
+                .insert(profile)
+                .execute()
         }
     }
     
@@ -103,6 +124,9 @@ class AuthenticationManager: ObservableObject {
             self.isAuthenticated = true
             self.currentUser = response.user
         }
+        
+        // Try to create profile if it doesn't exist
+        try await createUserProfileIfNeeded()
     }
     
     func signOut() async throws {

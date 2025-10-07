@@ -8,6 +8,7 @@ struct AuthenticationView: View {
     @State private var isSignUp = false
     @State private var email = ""
     @State private var password = ""
+    @State private var confirmPassword = ""
     @State private var displayName = ""
     @State private var showingAlert = false
     @State private var alertMessage = ""
@@ -38,18 +39,39 @@ struct AuthenticationView: View {
                 VStack(spacing: 20) {
                     if isSignUp {
                         TextField("Display Name", text: $displayName)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
                             .autocapitalization(.words)
                     }
                     
                     TextField("Email", text: $email)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
                         .autocorrectionDisabled()
                     
                     SecureField("Password", text: $password)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                        .textContentType(.password)
+                        .autocapitalization(.none)
+                        .autocorrectionDisabled()
+                        .disableAutocorrection(true)
+                    
+                    if isSignUp {
+                        SecureField("Confirm Password", text: $confirmPassword)
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                            .textContentType(.newPassword)
+                            .autocapitalization(.none)
+                            .autocorrectionDisabled()
+                            .disableAutocorrection(true)
+                    }
                     
                     Button(action: handleAuthentication) {
                         HStack {
@@ -68,7 +90,7 @@ struct AuthenticationView: View {
                         .foregroundColor(.white)
                         .cornerRadius(10)
                     }
-                    .disabled(authManager.isLoading || email.isEmpty || password.isEmpty || (isSignUp && displayName.isEmpty))
+                    .disabled(authManager.isLoading || email.isEmpty || password.isEmpty || (isSignUp && (displayName.isEmpty || confirmPassword.isEmpty || password != confirmPassword)))
                     
                     // Sign in with Apple Button
                     SignInWithAppleButton(
@@ -120,6 +142,14 @@ struct AuthenticationView: View {
         Task {
             do {
                 if isSignUp {
+                    // Validate password confirmation
+                    if password != confirmPassword {
+                        await MainActor.run {
+                            alertMessage = "Passwords do not match"
+                            showingAlert = true
+                        }
+                        return
+                    }
                     try await authManager.signUp(email: email, password: password, displayName: displayName)
                 } else {
                     try await authManager.signIn(email: email, password: password)
