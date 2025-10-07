@@ -1,7 +1,10 @@
 import SwiftUI
+import AuthenticationServices
+import Supabase
 
 struct AuthenticationView: View {
     @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var notificationManager: NotificationManager
     @State private var isSignUp = false
     @State private var email = ""
     @State private var password = ""
@@ -67,6 +70,20 @@ struct AuthenticationView: View {
                     }
                     .disabled(authManager.isLoading || email.isEmpty || password.isEmpty || (isSignUp && displayName.isEmpty))
                     
+                    // Sign in with Apple Button
+                    SignInWithAppleButton(
+                        onRequest: { request in
+                            request.requestedScopes = [.fullName, .email]
+                        },
+                        onCompletion: { result in
+                            handleAppleSignIn(result)
+                        }
+                    )
+                    .signInWithAppleButtonStyle(.black)
+                    .frame(height: 50)
+                    .cornerRadius(10)
+                    .disabled(authManager.isLoading)
+                    
                     Button(action: {
                         withAnimation {
                             isSignUp.toggle()
@@ -113,6 +130,80 @@ struct AuthenticationView: View {
                     showingAlert = true
                 }
             }
+        }
+    }
+    
+    private func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .success(let authorization):
+            Task {
+                do {
+                    guard let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                          let identityToken = appleIDCredential.identityToken,
+                          let identityTokenString = String(data: identityToken, encoding: .utf8) else {
+                        throw AuthenticationError.appleSignInFailed
+                    }
+                    
+                    let authResponse = try await authManager.supabase.auth.signInWithIdToken(
+                        credentials: OpenIDConnectCredentials(
+                            provider: .apple,
+                            idToken: identityTokenString,
+                            nonce: nil
+                        )
+                    )
+                    
+                    // Create or update user profile
+                    let user = authResponse.user
+                    
+                    let displayName = [appleIDCredential.fullName?.givenName, appleIDCredential.fullName?.familyName]
+                        .compactMap { $0 }
+                        .joined(separator: " ")
+                    
+                    let profile = UserProfile(
+                        id: user.id.uuidString,
+                        displayName: displayName.isEmpty ? "Apple User" : displayName,
+                        email: user.email ?? "",
+                        dailyGoals: MacroGoals(),
+                        isPrivate: false,
+                        createdAt: Date()
+                    )
+                    
+                    try await authManager.supabase.database
+                        .from("profiles")
+                        .upsert(profile)
+                        .execute()
+                    
+                    await MainActor.run {
+                        authManager.isAuthenticated = true
+                        authManager.currentUser = authResponse.user
+                    }
+                } catch {
+                    await MainActor.run {
+                        alertMessage = error.localizedDescription
+                        showingAlert = true
+                    }
+                }
+            }
+        case .failure(let error):
+            alertMessage = error.localizedDescription
+            showingAlert = true
+        }
+    }
+}
+
+enum AuthenticationError: LocalizedError {
+    case appleSignInFailed
+    case invalidCredentials
+    case networkError
+    
+    var errorDescription: String? {
+        switch self {
+        case .appleSignInFailed:
+            return "Apple Sign In failed. Please try again."
+        case .invalidCredentials:
+            return "Invalid email or password. Please check your credentials and try again."
+        case .networkError:
+            return "Network error. Please check your connection and try again."
         }
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 
 struct SearchView: View {
     @EnvironmentObject var dataManager: DataManager
@@ -152,7 +153,7 @@ struct SearchView: View {
         
         let todayMeal = Meal(
             id: UUID().uuidString,
-            userId: userId,
+            userId: userId.uuidString,
             name: meal.name,
             imageURL: meal.imageURL,
             ingredients: meal.ingredients,
@@ -224,10 +225,10 @@ struct SearchResultRow: View {
                 }
                 
                 HStack(spacing: 8) {
-                    MacroBadge(value: Int(meal.macros.calories), unit: "kcal", color: .orange)
-                    MacroBadge(value: Int(meal.macros.protein), unit: "p", color: .red)
-                    MacroBadge(value: Int(meal.macros.carbohydrates), unit: "c", color: .blue)
-                    MacroBadge(value: Int(meal.macros.fat), unit: "f", color: .green)
+                    MacroBadge(label: "Cal", value: "\(Int(meal.macros.calories))", color: .orange)
+                    MacroBadge(label: "P", value: "\(Int(meal.macros.protein))g", color: .red)
+                    MacroBadge(label: "C", value: "\(Int(meal.macros.carbohydrates))g", color: .blue)
+                    MacroBadge(label: "F", value: "\(Int(meal.macros.fat))g", color: .green)
                 }
             }
             

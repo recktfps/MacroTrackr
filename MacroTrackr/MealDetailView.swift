@@ -490,15 +490,6 @@ struct ShareButton: View {
     }
 }
 
-// MARK: - Date Formatter
-extension DateFormatter {
-    static let mealDetailFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }()
-}
 
 #Preview {
     MealDetailView(meal: Meal(

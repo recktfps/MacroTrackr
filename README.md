@@ -42,7 +42,7 @@ A comprehensive food tracking iPhone app built with SwiftUI that helps users mon
 - **Supabase**: Backend-as-a-Service
   - PostgreSQL database
   - Real-time subscriptions
-  - Authentication
+  - Authentication (Email/Password + Sign in with Apple)
   - File storage
   - Row Level Security
 
@@ -97,6 +97,10 @@ A comprehensive food tracking iPhone app built with SwiftUI that helps users mon
 ### Supabase Setup
 
 The app uses Supabase for backend services. See `supabase-config.md` for detailed setup instructions.
+
+### Apple Sign In Setup
+
+The app supports Sign in with Apple for secure authentication. See `supabase-apple-config.md` for detailed setup instructions.
 
 **Why Supabase?**
 - ✅ Free plan supports thousands of users

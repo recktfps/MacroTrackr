@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import Supabase
 
 struct StatsView: View {
     @EnvironmentObject var dataManager: DataManager
@@ -81,7 +82,7 @@ struct StatsView: View {
         isLoading = true
         
         Task {
-            let stats = await fetchStats(for: userId, period: selectedPeriod, date: selectedDate)
+            let stats = await fetchStats(for: userId.uuidString, period: selectedPeriod, date: selectedDate)
             
             await MainActor.run {
                 self.statsData = stats
@@ -156,20 +157,20 @@ struct StatsView: View {
         }
         
         let goals = MacroGoals()
-        let progress = MacroProgress(
-            caloriesProgress: (totalMacros.calories / goals.calories) * 100,
-            proteinProgress: (totalMacros.protein / goals.protein) * 100,
-            carbohydratesProgress: (totalMacros.carbohydrates / goals.carbohydrates) * 100,
-            fatProgress: (totalMacros.fat / goals.fat) * 100,
-            sugarProgress: (totalMacros.sugar / goals.sugar) * 100,
-            fiberProgress: (totalMacros.fiber / goals.fiber) * 100
-        )
         
         return DailyStats(
             date: date,
-            totalMacros: totalMacros,
-            meals: mockMeals,
-            goalProgress: progress
+            totalCalories: totalMacros.calories,
+            totalProtein: totalMacros.protein,
+            totalCarbs: totalMacros.carbohydrates,
+            totalFat: totalMacros.fat,
+            totalSugar: totalMacros.sugar,
+            goalCalories: goals.calories,
+            goalProtein: goals.protein,
+            goalCarbs: goals.carbohydrates,
+            goalFat: goals.fat,
+            goalSugar: goals.sugar,
+            mealCount: mockMeals.count
         )
     }
 }
@@ -288,13 +289,13 @@ struct ChartSectionView: View {
             Chart(statsData, id: \.date) { stat in
                 LineMark(
                     x: .value("Date", stat.date),
-                    y: .value("Calories", stat.totalMacros.calories)
+                    y: .value("Calories", stat.totalCalories)
                 )
                 .foregroundStyle(.orange)
                 
                 LineMark(
                     x: .value("Date", stat.date),
-                    y: .value("Protein", stat.totalMacros.protein)
+                    y: .value("Protein", stat.totalProtein)
                 )
                 .foregroundStyle(.red)
             }
@@ -321,12 +322,12 @@ struct SummaryCardsView: View {
         
         let totals = statsData.reduce(MacroNutrition()) { total, stat in
             MacroNutrition(
-                calories: total.calories + stat.totalMacros.calories,
-                protein: total.protein + stat.totalMacros.protein,
-                carbohydrates: total.carbohydrates + stat.totalMacros.carbohydrates,
-                fat: total.fat + stat.totalMacros.fat,
-                sugar: total.sugar + stat.totalMacros.sugar,
-                fiber: total.fiber + stat.totalMacros.fiber
+                calories: total.calories + stat.totalCalories,
+                protein: total.protein + stat.totalProtein,
+                carbohydrates: total.carbohydrates + stat.totalCarbs,
+                fat: total.fat + stat.totalFat,
+                sugar: total.sugar + stat.totalSugar,
+                fiber: 0 // DailyStats doesn't have fiber, using 0
             )
         }
         

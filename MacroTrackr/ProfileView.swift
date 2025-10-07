@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 
 struct ProfileView: View {
     @EnvironmentObject var authManager: AuthenticationManager
@@ -73,7 +74,7 @@ struct ProfileView: View {
         Task {
             // In a real implementation, this would fetch from Supabase
             let profile = UserProfile(
-                id: userId,
+                id: userId.uuidString,
                 displayName: "User",
                 email: authManager.currentUser?.email ?? "",
                 dailyGoals: MacroGoals(),

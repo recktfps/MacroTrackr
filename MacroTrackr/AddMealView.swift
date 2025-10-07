@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import Supabase
 
 struct AddMealView: View {
     @EnvironmentObject var dataManager: DataManager
@@ -197,7 +198,7 @@ struct AddMealView: View {
                 
                 let meal = Meal(
                     id: UUID().uuidString,
-                    userId: userId,
+                    userId: userId.uuidString,
                     name: mealName,
                     imageURL: imageURL,
                     ingredients: ingredients.filter { !$0.isEmpty },
@@ -231,13 +232,10 @@ struct AddMealView: View {
     
     private func applyScanResult(_ result: FoodScanResult) {
         // Apply scanned food results to the form
-        if !result.foodItems.isEmpty {
-            let firstItem = result.foodItems[0]
-            if mealName.isEmpty {
-                mealName = firstItem.name
-            }
-            macros = result.estimatedMacros
+        if mealName.isEmpty {
+            mealName = result.foodName
         }
+        macros = result.estimatedNutrition
     }
 }
 
@@ -347,17 +345,9 @@ struct CameraView: View {
             Button("Simulate Scan") {
                 // Simulate a scan result
                 let mockResult = FoodScanResult(
-                    foodItems: [
-                        DetectedFood(
-                            id: UUID().uuidString,
-                            name: "Chicken Breast",
-                            confidence: 0.85,
-                            estimatedPortion: "150g",
-                            macros: MacroNutrition(calories: 165, protein: 31, carbohydrates: 0, fat: 3.6, sugar: 0, fiber: 0)
-                        )
-                    ],
-                    estimatedMacros: MacroNutrition(calories: 165, protein: 31, carbohydrates: 0, fat: 3.6, sugar: 0, fiber: 0),
-                    confidence: 0.85
+                    foodName: "Chicken Breast",
+                    confidence: 0.85,
+                    estimatedNutrition: MacroNutrition(calories: 165, protein: 31, carbohydrates: 0, fat: 3.6, sugar: 0, fiber: 0)
                 )
                 onResult(mockResult)
             }
@@ -381,32 +371,30 @@ struct ScanResultView: View {
                 .font(.title2)
                 .fontWeight(.bold)
             
-            ForEach(result.foodItems) { item in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(item.name)
-                            .font(.headline)
-                        Spacer()
-                        Text("\(Int(item.confidence * 100))% confidence")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Text("Estimated portion: \(item.estimatedPortion)")
-                        .font(.subheadline)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(result.foodName)
+                        .font(.headline)
+                    Spacer()
+                    Text("\(Int(result.confidence * 100))% confidence")
+                        .font(.caption)
                         .foregroundColor(.secondary)
-                    
-                    HStack(spacing: 12) {
-                        MacroBadge(value: Int(item.macros.calories), unit: "kcal", color: .orange)
-                        MacroBadge(value: Int(item.macros.protein), unit: "p", color: .red)
-                        MacroBadge(value: Int(item.macros.carbohydrates), unit: "c", color: .blue)
-                        MacroBadge(value: Int(item.macros.fat), unit: "f", color: .green)
-                    }
                 }
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
+                
+                Text("Estimated nutrition")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                HStack(spacing: 12) {
+                    MacroBadge(label: "Calories", value: "\(Int(result.estimatedNutrition.calories))", color: .orange)
+                    MacroBadge(label: "Protein", value: "\(Int(result.estimatedNutrition.protein))g", color: .red)
+                    MacroBadge(label: "Carbs", value: "\(Int(result.estimatedNutrition.carbohydrates))g", color: .blue)
+                    MacroBadge(label: "Fat", value: "\(Int(result.estimatedNutrition.fat))g", color: .green)
+                }
             }
+            .padding()
+            .background(Color(.systemGray6))
+            .cornerRadius(12)
             
             HStack(spacing: 16) {
                 Button("Cancel") {
