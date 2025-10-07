@@ -276,6 +276,64 @@ struct FoodScanResult: Identifiable, Codable {
     }
 }
 
+// MARK: - Friend Request
+struct FriendRequest: Identifiable, Codable {
+    let id: String
+    let fromUserId: String
+    let toUserId: String
+    let status: FriendRequestStatus
+    let createdAt: Date
+    let updatedAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case fromUserId = "from_user_id"
+        case toUserId = "to_user_id"
+        case status
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+enum FriendRequestStatus: String, Codable, CaseIterable {
+    case pending = "pending"
+    case accepted = "accepted"
+    case declined = "declined"
+}
+
+// MARK: - Friendship
+struct Friendship: Identifiable, Codable {
+    let id: String
+    let userId1: String
+    let userId2: String
+    let createdAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId1 = "user_id_1"
+        case userId2 = "user_id_2"
+        case createdAt = "created_at"
+    }
+}
+
+// MARK: - User with Friendship Info
+struct UserWithFriendshipInfo: Identifiable, Codable {
+    let user: UserProfile
+    let friendshipStatus: FriendshipStatus
+    let mutualFriendsCount: Int
+    let mutualFriends: [UserProfile]
+    
+    var id: String { user.id }
+}
+
+enum FriendshipStatus: String, Codable, CaseIterable {
+    case notFriends = "not_friends"
+    case pendingOutgoing = "pending_outgoing"
+    case pendingIncoming = "pending_incoming"
+    case friends = "friends"
+    case selfUser = "self_user"
+}
+
 // MARK: - Daily Stats
 struct DailyStats: Identifiable, Codable {
     let id: UUID

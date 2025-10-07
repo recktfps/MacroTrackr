@@ -12,6 +12,7 @@ struct AuthenticationView: View {
     @State private var displayName = ""
     @State private var showingAlert = false
     @State private var alertMessage = ""
+    @State private var showingEmailConfirmation = false
     
     var body: some View {
         NavigationView {
@@ -124,7 +125,7 @@ struct AuthenticationView: View {
                     FeatureRow(icon: "chart.bar.fill", title: "Track Macros", description: "Monitor calories, protein, carbs, and more")
                     FeatureRow(icon: "camera.fill", title: "Food Scanning", description: "AI-powered food recognition")
                     FeatureRow(icon: "person.2.fill", title: "Social Features", description: "Share meals with friends")
-                    FeatureRow(icon: "widget.and.containers", title: "Home Widget", description: "Quick view on your home screen")
+                    FeatureRow(icon: "square.grid.2x2", title: "Home Widget", description: "Quick view on your home screen")
                 }
                 .padding(.horizontal, 40)
                 .padding(.bottom, 40)
@@ -135,6 +136,11 @@ struct AuthenticationView: View {
             Button("OK") { }
         } message: {
             Text(alertMessage)
+        }
+        .alert("Email Confirmation Required", isPresented: $showingEmailConfirmation) {
+            Button("OK") { }
+        } message: {
+            Text("An email has been sent to \(email). Please check your inbox and click the confirmation link to complete your registration.")
         }
     }
     
@@ -151,6 +157,10 @@ struct AuthenticationView: View {
                         return
                     }
                     try await authManager.signUp(email: email, password: password, displayName: displayName)
+                    // Show email confirmation message
+                    await MainActor.run {
+                        showingEmailConfirmation = true
+                    }
                 } else {
                     try await authManager.signIn(email: email, password: password)
                 }
@@ -198,7 +208,7 @@ struct AuthenticationView: View {
                         createdAt: Date()
                     )
                     
-                    try await authManager.supabase.database
+                    try await authManager.supabase
                         .from("profiles")
                         .upsert(profile)
                         .execute()

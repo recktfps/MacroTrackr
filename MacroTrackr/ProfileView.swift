@@ -1,5 +1,6 @@
 import SwiftUI
 import Supabase
+import PhotosUI
 
 struct ProfileView: View {
     @EnvironmentObject var authManager: AuthenticationManager
@@ -10,13 +11,20 @@ struct ProfileView: View {
     @State private var showingPrivacySettings = false
     @State private var userProfile: UserProfile?
     @State private var isLoading = false
+    @State private var showingImagePicker = false
+    @State private var selectedImage: PhotosPickerItem?
+    @State private var profileImage: UIImage?
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
                     // Profile Header
-                    ProfileHeaderView(profile: userProfile)
+                    ProfileHeaderView(profile: userProfile, onProfileUpdated: {
+                        loadUserProfile()
+                    })
                     
                     // Quick Stats
                     QuickStatsView()
@@ -72,19 +80,52 @@ struct ProfileView: View {
         isLoading = true
         
         Task {
-            // In a real implementation, this would fetch from Supabase
-            let profile = UserProfile(
-                id: userId.uuidString,
-                displayName: "User",
-                email: authManager.currentUser?.email ?? "",
-                dailyGoals: MacroGoals(),
-                isPrivate: false,
-                createdAt: Date()
-            )
-            
-            await MainActor.run {
-                self.userProfile = profile
-                self.isLoading = false
+            do {
+                // Fetch user profile from Supabase
+                let profiles: [UserProfile] = try await dataManager.supabase
+                    .from("profiles")
+                    .select()
+                    .eq("id", value: userId.uuidString)
+                    .execute()
+                    .value
+                
+                if let profile = profiles.first {
+                    await MainActor.run {
+                        self.userProfile = profile
+                        self.isLoading = false
+                    }
+                } else {
+                    // Create default profile if none exists
+                    let profile = UserProfile(
+                        id: userId.uuidString,
+                        displayName: "User",
+                        email: authManager.currentUser?.email ?? "",
+                        dailyGoals: MacroGoals(),
+                        isPrivate: false,
+                        createdAt: Date()
+                    )
+                    
+                    await MainActor.run {
+                        self.userProfile = profile
+                        self.isLoading = false
+                    }
+                }
+            } catch {
+                print("Error loading user profile: \(error)")
+                // Fallback to default profile
+                let profile = UserProfile(
+                    id: userId.uuidString,
+                    displayName: "User",
+                    email: authManager.currentUser?.email ?? "",
+                    dailyGoals: MacroGoals(),
+                    isPrivate: false,
+                    createdAt: Date()
+                )
+                
+                await MainActor.run {
+                    self.userProfile = profile
+                    self.isLoading = false
+                }
             }
         }
     }
@@ -98,26 +139,56 @@ struct ProfileView: View {
 
 // MARK: - Profile Header View
 struct ProfileHeaderView: View {
+    @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject var authManager: AuthenticationManager
     let profile: UserProfile?
+    let onProfileUpdated: () -> Void
+    @State private var showingImagePicker = false
+    @State private var selectedImage: PhotosPickerItem?
+    @State private var profileImage: UIImage?
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
+    @State private var isUploading = false
     
     var body: some View {
         VStack(spacing: 16) {
-            // Profile Image
-            AsyncImage(url: URL(string: profile?.profileImageURL ?? "")) { image in
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } placeholder: {
-                Circle()
-                    .fill(Color(.systemGray5))
-                    .overlay(
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 40))
-                            .foregroundColor(.secondary)
-                    )
+            // Profile Image with Edit Button
+            ZStack {
+                AsyncImage(url: URL(string: profile?.profileImageURL ?? "")) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Circle()
+                        .fill(Color(.systemGray5))
+                        .overlay(
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 40))
+                                .foregroundColor(.secondary)
+                        )
+                }
+                .frame(width: 100, height: 100)
+                .clipShape(Circle())
+                
+                // Edit Button Overlay
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            showingImagePicker = true
+                        }) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                                .frame(width: 32, height: 32)
+                                .background(Color.blue)
+                                .clipShape(Circle())
+                        }
+                    }
+                }
+                .frame(width: 100, height: 100)
             }
-            .frame(width: 100, height: 100)
-            .clipShape(Circle())
             
             // Name and Email
             VStack(spacing: 4) {
@@ -138,10 +209,72 @@ struct ProfileHeaderView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
+            
+            // Upload Progress
+            if isUploading {
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Uploading...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
         }
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(16)
+        .photosPicker(isPresented: $showingImagePicker, selection: $selectedImage, matching: .images)
+        .onChange(of: selectedImage) { _, newValue in
+            Task {
+                if let data = try? await newValue?.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    await MainActor.run {
+                        self.profileImage = image
+                    }
+                    await uploadProfileImage(image)
+                }
+            }
+        }
+        .alert("Profile Picture", isPresented: $showingAlert) {
+            Button("OK") { }
+        } message: {
+            Text(alertMessage)
+        }
+    }
+    
+    private func uploadProfileImage(_ image: UIImage) async {
+        guard let userId = authManager.currentUser?.id.uuidString else { return }
+        
+        await MainActor.run {
+            isUploading = true
+        }
+        
+        do {
+            // Convert image to data
+            guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+                throw NSError(domain: "ImageError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to convert image to data"])
+            }
+            
+            // Upload to Supabase Storage
+            let imageURL = try await dataManager.uploadProfileImage(imageData, userId: userId)
+            
+            // Update user profile in database
+            try await dataManager.updateUserProfile(userId: userId, profileImageURL: imageURL)
+            
+            await MainActor.run {
+                isUploading = false
+                alertMessage = "Profile picture updated successfully!"
+                showingAlert = true
+                onProfileUpdated() // Refresh the profile
+            }
+        } catch {
+            await MainActor.run {
+                isUploading = false
+                alertMessage = "Failed to update profile picture: \(error.localizedDescription)"
+                showingAlert = true
+            }
+        }
     }
 }
 
@@ -467,12 +600,27 @@ struct MacroGoalField: View {
 // MARK: - Friends View
 struct FriendsView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject var authManager: AuthenticationManager
     @State private var searchText = ""
-    @State private var friends: [UserProfile] = []
+    @State private var showingAddFriend = false
+    @State private var friendDisplayName = ""
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
+    @State private var selectedTab = 0
     
     var body: some View {
         NavigationView {
             VStack {
+                // Tab Picker
+                Picker("View", selection: $selectedTab) {
+                    Text("Users").tag(0)
+                    Text("Friends").tag(1)
+                    Text("Requests").tag(2)
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .padding()
+                
                 // Search Bar
                 HStack {
                     Image(systemName: "magnifyingglass")
@@ -484,21 +632,97 @@ struct FriendsView: View {
                 .padding()
                 .background(Color(.systemGray6))
                 .cornerRadius(10)
-                .padding()
+                .padding(.horizontal)
                 
-                // Friends List
-                List(friends) { friend in
-                    FriendRowView(friend: friend)
+                // Content based on selected tab
+                TabView(selection: $selectedTab) {
+                    // All Users Tab
+                    UsersListView(searchText: searchText)
+                        .tag(0)
+                    
+                    // Friends Tab
+                    FriendsListView(friends: dataManager.friends, searchText: searchText)
+                        .tag(1)
+                    
+                    // Friend Requests Tab
+                    FriendRequestsListView(
+                        pendingRequests: dataManager.pendingFriendRequests,
+                        outgoingRequests: dataManager.friendRequests
+                    )
+                        .tag(2)
                 }
-                .listStyle(PlainListStyle())
+                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
             }
             .navigationTitle("Friends")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Add Friend") {
+                        showingAddFriend = true
+                    }
+                }
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }
+                }
+            }
+            .alert("Add Friend", isPresented: $showingAddFriend) {
+                TextField("Display Name", text: $friendDisplayName)
+                Button("Send Request") {
+                    sendFriendRequest()
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Enter your friend's display name to send a friend request.")
+            }
+            .alert("Friend Request", isPresented: $showingAlert) {
+                Button("OK") { }
+            } message: {
+                Text(alertMessage)
+            }
+            .onAppear {
+                loadData()
+            }
+        }
+    }
+    
+    private func loadData() {
+        guard let userId = authManager.currentUser?.id.uuidString else { return }
+        
+        Task {
+            await dataManager.loadAllUsers(for: userId)
+            await dataManager.loadFriends(for: userId)
+            await dataManager.loadFriendRequests(for: userId)
+        }
+    }
+    
+    private func sendFriendRequest() {
+        guard !friendDisplayName.isEmpty else {
+            alertMessage = "Please enter a display name."
+            showingAlert = true
+            return
+        }
+        
+        guard let userId = authManager.currentUser?.id.uuidString else {
+            alertMessage = "User not authenticated."
+            showingAlert = true
+            return
+        }
+        
+        Task {
+            do {
+                try await dataManager.sendFriendRequest(fromUserId: userId, toDisplayName: friendDisplayName)
+                await MainActor.run {
+                    alertMessage = "Friend request sent to \(friendDisplayName)!"
+                    showingAlert = true
+                    friendDisplayName = ""
+                }
+            } catch {
+                await MainActor.run {
+                    alertMessage = error.localizedDescription
+                    showingAlert = true
                 }
             }
         }
@@ -594,6 +818,529 @@ struct PrivacySettingsView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
                         // Save privacy settings
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Users List View
+struct UsersListView: View {
+    @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject var authManager: AuthenticationManager
+    let searchText: String
+    
+    var filteredUsers: [UserWithFriendshipInfo] {
+        if searchText.isEmpty {
+            return dataManager.allUsers
+        } else {
+            return dataManager.allUsers.filter { user in
+                user.user.displayName.localizedCaseInsensitiveContains(searchText) ||
+                user.user.email.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
+    
+    var body: some View {
+        List(filteredUsers) { userInfo in
+            NavigationLink(destination: UserProfileView(userInfo: userInfo)) {
+                UserRowView(userInfo: userInfo)
+            }
+        }
+        .listStyle(PlainListStyle())
+    }
+}
+
+// MARK: - Friends List View
+struct FriendsListView: View {
+    let friends: [UserProfile]
+    let searchText: String
+    
+    var filteredFriends: [UserProfile] {
+        if searchText.isEmpty {
+            return friends
+        } else {
+            return friends.filter { friend in
+                friend.displayName.localizedCaseInsensitiveContains(searchText) ||
+                friend.email.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
+    
+    var body: some View {
+        List(filteredFriends) { friend in
+            NavigationLink(destination: UserProfileView(userInfo: UserWithFriendshipInfo(
+                user: friend,
+                friendshipStatus: .friends,
+                mutualFriendsCount: 0,
+                mutualFriends: []
+            ))) {
+                FriendRowView(friend: friend)
+            }
+        }
+        .listStyle(PlainListStyle())
+    }
+}
+
+// MARK: - Friend Requests List View
+struct FriendRequestsListView: View {
+    @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject var authManager: AuthenticationManager
+    let pendingRequests: [FriendRequest]
+    let outgoingRequests: [FriendRequest]
+    
+    var body: some View {
+        List {
+            if !pendingRequests.isEmpty {
+                Section("Incoming Requests") {
+                    ForEach(pendingRequests) { request in
+                        FriendRequestRowView(request: request, isIncoming: true)
+                    }
+                }
+            }
+            
+            if !outgoingRequests.isEmpty {
+                Section("Sent Requests") {
+                    ForEach(outgoingRequests) { request in
+                        FriendRequestRowView(request: request, isIncoming: false)
+                    }
+                }
+            }
+            
+            if pendingRequests.isEmpty && outgoingRequests.isEmpty {
+                Section {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 8) {
+                            Image(systemName: "person.2")
+                                .font(.largeTitle)
+                                .foregroundColor(.secondary)
+                            Text("No Friend Requests")
+                                .font(.headline)
+                                .foregroundColor(.secondary)
+                            Text("Send friend requests to connect with other users")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        Spacer()
+                    }
+                    .padding()
+                }
+            }
+        }
+        .listStyle(PlainListStyle())
+    }
+}
+
+// MARK: - User Row View
+struct UserRowView: View {
+    @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject var authManager: AuthenticationManager
+    let userInfo: UserWithFriendshipInfo
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            AsyncImage(url: URL(string: userInfo.user.profileImageURL ?? "")) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } placeholder: {
+                Circle()
+                    .fill(Color(.systemGray5))
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .foregroundColor(.secondary)
+                    )
+            }
+            .frame(width: 50, height: 50)
+            .clipShape(Circle())
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(userInfo.user.displayName)
+                    .font(.headline)
+                
+                Text(userInfo.user.email)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                if userInfo.mutualFriendsCount > 0 {
+                    Text("\(userInfo.mutualFriendsCount) mutual friends")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                }
+            }
+            
+            Spacer()
+            
+            FriendStatusButton(userInfo: userInfo)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Friend Status Button
+struct FriendStatusButton: View {
+    @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject var authManager: AuthenticationManager
+    let userInfo: UserWithFriendshipInfo
+    
+    var body: some View {
+        Button(action: handleFriendAction) {
+            Text(buttonText)
+                .font(.caption)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(buttonColor)
+                .foregroundColor(.white)
+                .cornerRadius(8)
+        }
+        .disabled(userInfo.friendshipStatus == .selfUser)
+    }
+    
+    private var buttonText: String {
+        switch userInfo.friendshipStatus {
+        case .notFriends:
+            return "Add"
+        case .pendingOutgoing:
+            return "Pending"
+        case .pendingIncoming:
+            return "Accept"
+        case .friends:
+            return "Friends"
+        case .selfUser:
+            return "You"
+        }
+    }
+    
+    private var buttonColor: Color {
+        switch userInfo.friendshipStatus {
+        case .notFriends:
+            return .blue
+        case .pendingOutgoing:
+            return .orange
+        case .pendingIncoming:
+            return .green
+        case .friends:
+            return .green
+        case .selfUser:
+            return .gray
+        }
+    }
+    
+    private func handleFriendAction() {
+        guard let currentUserId = authManager.currentUser?.id.uuidString else { return }
+        
+        switch userInfo.friendshipStatus {
+        case .notFriends:
+            Task {
+                do {
+                    try await dataManager.sendFriendRequest(fromUserId: currentUserId, toDisplayName: userInfo.user.displayName)
+                    // Refresh data after sending request
+                    await dataManager.loadAllUsers(for: currentUserId)
+                    await dataManager.loadFriendRequests(for: currentUserId)
+                } catch {
+                    print("Error sending friend request: \(error)")
+                }
+            }
+        case .pendingIncoming:
+            // Find the incoming request and accept it
+            if let request = dataManager.pendingFriendRequests.first(where: { $0.fromUserId == userInfo.user.id }) {
+                Task {
+                    do {
+                        try await dataManager.respondToFriendRequest(requestId: request.id, status: .accepted, currentUserId: currentUserId)
+                        // Refresh data after accepting request
+                        await dataManager.loadAllUsers(for: currentUserId)
+                        await dataManager.loadFriends(for: currentUserId)
+                        await dataManager.loadFriendRequests(for: currentUserId)
+                    } catch {
+                        print("Error accepting friend request: \(error)")
+                    }
+                }
+            }
+        default:
+            break
+        }
+    }
+}
+
+// MARK: - Friend Request Row View
+struct FriendRequestRowView: View {
+    @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject var authManager: AuthenticationManager
+    let request: FriendRequest
+    let isIncoming: Bool
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(Color(.systemGray5))
+                .frame(width: 50, height: 50)
+                .overlay(
+                    Image(systemName: "person.fill")
+                        .foregroundColor(.secondary)
+                )
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(isIncoming ? "Friend Request" : "Request Sent")
+                    .font(.headline)
+                
+                Text(request.id) // In a real app, you'd fetch the user's display name
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            if isIncoming {
+                HStack(spacing: 8) {
+                    Button("Decline") {
+                        Task {
+                            guard let currentUserId = authManager.currentUser?.id.uuidString else { return }
+                            try? await dataManager.respondToFriendRequest(requestId: request.id, status: .declined, currentUserId: currentUserId)
+                            // Refresh data after declining request
+                            await dataManager.loadAllUsers(for: currentUserId)
+                            await dataManager.loadFriendRequests(for: currentUserId)
+                        }
+                    }
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.red)
+                    .foregroundColor(.white)
+                    .cornerRadius(6)
+                    
+                    Button("Accept") {
+                        Task {
+                            guard let currentUserId = authManager.currentUser?.id.uuidString else { return }
+                            try? await dataManager.respondToFriendRequest(requestId: request.id, status: .accepted, currentUserId: currentUserId)
+                            // Refresh data after accepting request
+                            await dataManager.loadAllUsers(for: currentUserId)
+                            await dataManager.loadFriends(for: currentUserId)
+                            await dataManager.loadFriendRequests(for: currentUserId)
+                        }
+                    }
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.green)
+                    .foregroundColor(.white)
+                    .cornerRadius(6)
+                }
+            } else {
+                Text("Pending")
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.orange)
+                    .foregroundColor(.white)
+                    .cornerRadius(6)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - User Profile View
+struct UserProfileView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject var authManager: AuthenticationManager
+    let userInfo: UserWithFriendshipInfo
+    @State private var showingMutualFriends = false
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                // Profile Header
+                VStack(spacing: 16) {
+                    AsyncImage(url: URL(string: userInfo.user.profileImageURL ?? "")) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Circle()
+                            .fill(Color(.systemGray5))
+                            .overlay(
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.secondary)
+                            )
+                    }
+                    .frame(width: 100, height: 100)
+                    .clipShape(Circle())
+                    
+                    VStack(spacing: 4) {
+                        Text(userInfo.user.displayName)
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        
+                        Text(userInfo.user.email)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    FriendStatusButton(userInfo: userInfo)
+                }
+                .padding()
+                
+                // Mutual Friends Section
+                if userInfo.mutualFriendsCount > 0 {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Mutual Friends")
+                                .font(.headline)
+                            Spacer()
+                            Button("View All") {
+                                showingMutualFriends = true
+                            }
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                        }
+                        
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(userInfo.mutualFriends.prefix(5)) { friend in
+                                    VStack(spacing: 4) {
+                                        AsyncImage(url: URL(string: friend.profileImageURL ?? "")) { image in
+                                            image
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                        } placeholder: {
+                                            Circle()
+                                                .fill(Color(.systemGray5))
+                                                .overlay(
+                                                    Image(systemName: "person.fill")
+                                                        .foregroundColor(.secondary)
+                                                )
+                                        }
+                                        .frame(width: 40, height: 40)
+                                        .clipShape(Circle())
+                                        
+                                        Text(friend.displayName)
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                
+                                if userInfo.mutualFriendsCount > 5 {
+                                    VStack(spacing: 4) {
+                                        Circle()
+                                            .fill(Color(.systemGray4))
+                                            .frame(width: 40, height: 40)
+                                            .overlay(
+                                                Text("+\(userInfo.mutualFriendsCount - 5)")
+                                                    .font(.caption)
+                                                    .fontWeight(.bold)
+                                            )
+                                        
+                                        Text("More")
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                }
+                
+                // Stats Section
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Activity")
+                        .font(.headline)
+                    
+                    HStack(spacing: 20) {
+                        VStack {
+                            Text("\(userInfo.user.favoriteMeals.count)")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                            Text("Favorite Meals")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        VStack {
+                            Text("7")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                            Text("Days Active")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+                .padding(.horizontal)
+            }
+        }
+        .navigationTitle("Profile")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Done") {
+                    dismiss()
+                }
+            }
+        }
+        .sheet(isPresented: $showingMutualFriends) {
+            MutualFriendsView(mutualFriends: userInfo.mutualFriends)
+        }
+    }
+}
+
+// MARK: - Mutual Friends View
+struct MutualFriendsView: View {
+    @Environment(\.dismiss) private var dismiss
+    let mutualFriends: [UserProfile]
+    
+    var body: some View {
+        NavigationView {
+            List(mutualFriends) { friend in
+                HStack(spacing: 12) {
+                    AsyncImage(url: URL(string: friend.profileImageURL ?? "")) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Circle()
+                            .fill(Color(.systemGray5))
+                            .overlay(
+                                Image(systemName: "person.fill")
+                                    .foregroundColor(.secondary)
+                            )
+                    }
+                    .frame(width: 40, height: 40)
+                    .clipShape(Circle())
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(friend.displayName)
+                            .font(.headline)
+                        
+                        Text(friend.email)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.vertical, 4)
+            }
+            .navigationTitle("Mutual Friends")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
                         dismiss()
                     }
                 }

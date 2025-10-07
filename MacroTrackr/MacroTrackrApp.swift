@@ -296,9 +296,12 @@ class DataManager: ObservableObject {
     @Published var todayMeals: [Meal] = []
     @Published var savedMeals: [Meal] = []
     @Published var friends: [UserProfile] = []
+    @Published var allUsers: [UserWithFriendshipInfo] = []
+    @Published var friendRequests: [FriendRequest] = []
+    @Published var pendingFriendRequests: [FriendRequest] = []
     @Published var isLoading = false
     
-    private let supabase = SupabaseClient(
+    let supabase = SupabaseClient(
         supabaseURL: URL(string: "https://adnjakimzfidaolaxmck.supabase.co")!,
         supabaseKey: "sb_publishable_VY1OkpLC8zEUuOkiPgxPoQ_9d0eVE9_"
     )
@@ -391,6 +394,333 @@ class DataManager: ObservableObject {
             .execute()
         
         await loadSavedMeals(for: meal.userId)
+    }
+    
+    // MARK: - Friend Request Methods
+    
+    func sendFriendRequest(fromUserId: String, toDisplayName: String) async throws {
+        // First, find the user by display name
+        let profiles: [UserProfile] = try await supabase
+            .from("profiles")
+            .select()
+            .eq("display_name", value: toDisplayName)
+            .execute()
+            .value
+        
+        guard let targetUser = profiles.first else {
+            throw NSError(domain: "FriendRequestError", code: 404, userInfo: [NSLocalizedDescriptionKey: "User not found"])
+        }
+        
+        // Check if already friends or request exists
+        let existingRequest: [FriendRequest] = try await supabase
+            .from("friend_requests")
+            .select()
+            .or("and(from_user_id.eq.\(fromUserId),to_user_id.eq.\(targetUser.id)),and(from_user_id.eq.\(targetUser.id),to_user_id.eq.\(fromUserId))")
+            .execute()
+            .value
+        
+        if !existingRequest.isEmpty {
+            throw NSError(domain: "FriendRequestError", code: 409, userInfo: [NSLocalizedDescriptionKey: "Friend request already exists"])
+        }
+        
+        // Check if already friends
+        let existingFriendship: [Friendship] = try await supabase
+            .from("friendships")
+            .select()
+            .or("and(user_id_1.eq.\(fromUserId),user_id_2.eq.\(targetUser.id)),and(user_id_1.eq.\(targetUser.id),user_id_2.eq.\(fromUserId))")
+            .execute()
+            .value
+        
+        if !existingFriendship.isEmpty {
+            throw NSError(domain: "FriendRequestError", code: 409, userInfo: [NSLocalizedDescriptionKey: "Already friends"])
+        }
+        
+        // Create friend request
+        let friendRequest = FriendRequest(
+            id: UUID().uuidString,
+            fromUserId: fromUserId,
+            toUserId: targetUser.id,
+            status: .pending,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        
+        try await supabase
+            .from("friend_requests")
+            .insert(friendRequest)
+            .execute()
+        
+        await loadFriendRequests(for: fromUserId)
+    }
+    
+    func loadFriendRequests(for userId: String) async {
+        do {
+            // Load outgoing requests
+            let outgoingRequests: [FriendRequest] = try await supabase
+                .from("friend_requests")
+                .select()
+                .eq("from_user_id", value: userId)
+                .eq("status", value: "pending")
+                .execute()
+                .value
+            
+            // Load incoming requests
+            let incomingRequests: [FriendRequest] = try await supabase
+                .from("friend_requests")
+                .select()
+                .eq("to_user_id", value: userId)
+                .eq("status", value: "pending")
+                .execute()
+                .value
+            
+            await MainActor.run {
+                self.friendRequests = outgoingRequests
+                self.pendingFriendRequests = incomingRequests
+            }
+        } catch {
+            print("Error loading friend requests: \(error)")
+        }
+    }
+    
+    func respondToFriendRequest(requestId: String, status: FriendRequestStatus, currentUserId: String) async throws {
+        // Update the friend request status
+        try await supabase
+            .from("friend_requests")
+            .update(["status": status.rawValue, "updated_at": Date().ISO8601Format()])
+            .eq("id", value: requestId)
+            .execute()
+        
+        if status == .accepted {
+            // Get the friend request details
+            let requests: [FriendRequest] = try await supabase
+                .from("friend_requests")
+                .select()
+                .eq("id", value: requestId)
+                .execute()
+                .value
+            
+            guard let request = requests.first else { return }
+            
+            // Create friendship (ensure user_id_1 < user_id_2)
+            let userId1 = min(request.fromUserId, request.toUserId)
+            let userId2 = max(request.fromUserId, request.toUserId)
+            
+            let friendship = Friendship(
+                id: UUID().uuidString,
+                userId1: userId1,
+                userId2: userId2,
+                createdAt: Date()
+            )
+            
+            try await supabase
+                .from("friendships")
+                .insert(friendship)
+                .execute()
+        }
+        
+        // Reload friend requests
+        await loadFriendRequests(for: currentUserId)
+    }
+    
+    func loadAllUsers(for currentUserId: String) async {
+        do {
+            // Load all profiles except current user
+            let profiles: [UserProfile] = try await supabase
+                .from("profiles")
+                .select()
+                .neq("id", value: currentUserId)
+                .execute()
+                .value
+            
+            // Load friendships for current user
+            let friendships: [Friendship] = try await supabase
+                .from("friendships")
+                .select()
+                .or("user_id_1.eq.\(currentUserId),user_id_2.eq.\(currentUserId)")
+                .execute()
+                .value
+            
+            // Load friend requests
+            let outgoingRequests: [FriendRequest] = try await supabase
+                .from("friend_requests")
+                .select()
+                .eq("from_user_id", value: currentUserId)
+                .eq("status", value: "pending")
+                .execute()
+                .value
+            
+            let incomingRequests: [FriendRequest] = try await supabase
+                .from("friend_requests")
+                .select()
+                .eq("to_user_id", value: currentUserId)
+                .eq("status", value: "pending")
+                .execute()
+                .value
+            
+            // Create UserWithFriendshipInfo objects
+            var usersWithInfo: [UserWithFriendshipInfo] = []
+            
+            for profile in profiles {
+                let friendshipStatus: FriendshipStatus
+                
+                if profile.id == currentUserId {
+                    friendshipStatus = .selfUser
+                } else if friendships.contains(where: { $0.userId1 == profile.id || $0.userId2 == profile.id }) {
+                    friendshipStatus = .friends
+                } else if outgoingRequests.contains(where: { $0.toUserId == profile.id }) {
+                    friendshipStatus = .pendingOutgoing
+                } else if incomingRequests.contains(where: { $0.fromUserId == profile.id }) {
+                    friendshipStatus = .pendingIncoming
+                } else {
+                    friendshipStatus = .notFriends
+                }
+                
+                // Calculate mutual friends
+                let mutualFriendsCount = await calculateMutualFriends(currentUserId: currentUserId, otherUserId: profile.id)
+                let mutualFriends = await getMutualFriends(currentUserId: currentUserId, otherUserId: profile.id)
+                
+                let userWithInfo = UserWithFriendshipInfo(
+                    user: profile,
+                    friendshipStatus: friendshipStatus,
+                    mutualFriendsCount: mutualFriendsCount,
+                    mutualFriends: mutualFriends
+                )
+                
+                usersWithInfo.append(userWithInfo)
+            }
+            
+            await MainActor.run {
+                self.allUsers = usersWithInfo
+            }
+        } catch {
+            print("Error loading all users: \(error)")
+        }
+    }
+    
+    private func calculateMutualFriends(currentUserId: String, otherUserId: String) async -> Int {
+        do {
+            // Get current user's friends
+            let currentUserFriendships: [Friendship] = try await supabase
+                .from("friendships")
+                .select()
+                .or("user_id_1.eq.\(currentUserId),user_id_2.eq.\(currentUserId)")
+                .execute()
+                .value
+            
+            let currentUserFriends = Set(currentUserFriendships.map { friendship in
+                friendship.userId1 == currentUserId ? friendship.userId2 : friendship.userId1
+            })
+            
+            // Get other user's friends
+            let otherUserFriendships: [Friendship] = try await supabase
+                .from("friendships")
+                .select()
+                .or("user_id_1.eq.\(otherUserId),user_id_2.eq.\(otherUserId)")
+                .execute()
+                .value
+            
+            let otherUserFriends = Set(otherUserFriendships.map { friendship in
+                friendship.userId1 == otherUserId ? friendship.userId2 : friendship.userId1
+            })
+            
+            // Find intersection
+            let mutualFriends = currentUserFriends.intersection(otherUserFriends)
+            return mutualFriends.count
+        } catch {
+            print("Error calculating mutual friends: \(error)")
+            return 0
+        }
+    }
+    
+    private func getMutualFriends(currentUserId: String, otherUserId: String) async -> [UserProfile] {
+        do {
+            // Get current user's friends
+            let currentUserFriendships: [Friendship] = try await supabase
+                .from("friendships")
+                .select()
+                .or("user_id_1.eq.\(currentUserId),user_id_2.eq.\(currentUserId)")
+                .execute()
+                .value
+            
+            let currentUserFriends = Set(currentUserFriendships.map { friendship in
+                friendship.userId1 == currentUserId ? friendship.userId2 : friendship.userId1
+            })
+            
+            // Get other user's friends
+            let otherUserFriendships: [Friendship] = try await supabase
+                .from("friendships")
+                .select()
+                .or("user_id_1.eq.\(otherUserId),user_id_2.eq.\(otherUserId)")
+                .execute()
+                .value
+            
+            let otherUserFriends = Set(otherUserFriendships.map { friendship in
+                friendship.userId1 == otherUserId ? friendship.userId2 : friendship.userId1
+            })
+            
+            // Find intersection
+            let mutualFriendIds = currentUserFriends.intersection(otherUserFriends)
+            
+            if mutualFriendIds.isEmpty {
+                return []
+            }
+            
+            // Get profiles for mutual friends
+            let mutualFriendProfiles: [UserProfile] = try await supabase
+                .from("profiles")
+                .select()
+                .in("id", values: Array(mutualFriendIds))
+                .execute()
+                .value
+            
+            return mutualFriendProfiles
+        } catch {
+            print("Error getting mutual friends: \(error)")
+            return []
+        }
+    }
+    
+    func loadFriends(for userId: String) async {
+        do {
+            let friendships: [Friendship] = try await supabase
+                .from("friendships")
+                .select()
+                .or("user_id_1.eq.\(userId),user_id_2.eq.\(userId)")
+                .execute()
+                .value
+            
+            let friendIds = friendships.map { friendship in
+                friendship.userId1 == userId ? friendship.userId2 : friendship.userId1
+            }
+            
+            if friendIds.isEmpty {
+                await MainActor.run {
+                    self.friends = []
+                }
+                return
+            }
+            
+            let friendProfiles: [UserProfile] = try await supabase
+                .from("profiles")
+                .select()
+                .in("id", values: friendIds)
+                .execute()
+                .value
+            
+            await MainActor.run {
+                self.friends = friendProfiles
+            }
+        } catch {
+            print("Error loading friends: \(error)")
+        }
+    }
+    
+    func updateUserProfile(userId: String, profileImageURL: String) async throws {
+        try await supabase
+            .from("profiles")
+            .update(["profile_image_url": profileImageURL, "updated_at": Date().ISO8601Format()])
+            .eq("id", value: userId)
+            .execute()
     }
 }
 

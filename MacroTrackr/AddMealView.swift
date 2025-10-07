@@ -83,7 +83,7 @@ struct AddMealView: View {
                             Button(action: {
                                 showingFoodScanner = true
                             }) {
-                                Label("Scan Food", systemImage: "camera.viewfinder")
+                                Label("AI Estimator", systemImage: "camera.viewfinder")
                                     .frame(maxWidth: .infinity)
                                     .padding()
                                     .background(Color.green)

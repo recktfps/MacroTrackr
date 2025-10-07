@@ -220,6 +220,9 @@ CREATE POLICY "Users can update friend requests they received" ON friend_request
 CREATE POLICY "Users can view their friendships" ON friendships
     FOR SELECT USING (auth.uid() = user_id_1 OR auth.uid() = user_id_2);
 
+CREATE POLICY "Users can insert friendships" ON friendships
+    FOR INSERT WITH CHECK (auth.uid() = user_id_1 OR auth.uid() = user_id_2);
+
 -- Shared meals policies
 CREATE POLICY "Users can view meals shared with them" ON shared_meals
     FOR SELECT USING (auth.uid() = shared_with_user_id OR auth.uid() = shared_by_user_id);
