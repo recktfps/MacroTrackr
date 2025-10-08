@@ -1,6 +1,9 @@
 import SwiftUI
 import PhotosUI
 import Supabase
+import AVFoundation
+import Vision
+import Combine
 
 struct AddMealView: View {
     @EnvironmentObject var dataManager: DataManager
@@ -225,9 +228,15 @@ struct AddMealView: View {
     }
     
     private func uploadImage(_ image: UIImage) async throws -> String {
-        // In a real app, you would upload to Supabase Storage or another service
-        // For now, we'll return a placeholder URL
-        return "https://example.com/meal-image.jpg"
+        guard let userId = authManager.currentUser?.id.uuidString else {
+            throw NSError(domain: "AuthError", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
+        }
+        
+        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+            throw NSError(domain: "ImageError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to convert image to data"])
+        }
+        
+        return try await dataManager.uploadImage(imageData, fileName: "\(UUID().uuidString).jpg", userId: userId)
     }
     
     private func applyScanResult(_ result: FoodScanResult) {
@@ -327,35 +336,207 @@ struct FoodScannerView: View {
     }
 }
 
-// MARK: - Camera View (Placeholder)
+// MARK: - Camera View
 struct CameraView: View {
     let onResult: (FoodScanResult) -> Void
+    @StateObject private var cameraManager = CameraManager()
     
     var body: some View {
-        VStack {
-            Text("Camera View")
-                .font(.title)
+        ZStack {
+            // Camera preview
+            CameraPreviewView(session: cameraManager.session)
+                .ignoresSafeArea()
             
-            Text("In a real implementation, this would show the camera preview and use Vision framework to detect food")
-                .font(.body)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+            // Overlay with scanning UI
+            VStack {
+                Spacer()
+                
+                VStack(spacing: 20) {
+                    Text("Point camera at food")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(Color.black.opacity(0.6))
+                        .cornerRadius(10)
+                    
+                    HStack(spacing: 20) {
+                        Button("Capture & Analyze") {
+                            captureAndAnalyze()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        
+                        Button("Simulate") {
+                            simulateScan()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                    }
+                }
                 .padding()
-            
-            Button("Simulate Scan") {
-                // Simulate a scan result
-                let mockResult = FoodScanResult(
-                    foodName: "Chicken Breast",
-                    confidence: 0.85,
-                    estimatedNutrition: MacroNutrition(calories: 165, protein: 31, carbohydrates: 0, fat: 3.6, sugar: 0, fiber: 0)
-                )
-                onResult(mockResult)
             }
-            .buttonStyle(.borderedProminent)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black)
-        .foregroundColor(.white)
+        .onAppear {
+            cameraManager.requestPermission()
+        }
+    }
+    
+    private func captureAndAnalyze() {
+        cameraManager.capturePhoto { image in
+            if let image = image {
+                analyzeFood(image: image)
+            }
+        }
+    }
+    
+    private func simulateScan() {
+        // Simulate a scan result with random food
+        let foods = [
+            ("Chicken Breast", MacroNutrition(calories: 165, protein: 31, carbohydrates: 0, fat: 3.6, sugar: 0, fiber: 0)),
+            ("Apple", MacroNutrition(calories: 95, protein: 0.5, carbohydrates: 25, fat: 0.3, sugar: 19, fiber: 4)),
+            ("Salmon", MacroNutrition(calories: 206, protein: 22, carbohydrates: 0, fat: 12, sugar: 0, fiber: 0)),
+            ("Rice", MacroNutrition(calories: 130, protein: 2.7, carbohydrates: 28, fat: 0.3, sugar: 0, fiber: 0.4)),
+            ("Broccoli", MacroNutrition(calories: 55, protein: 4.3, carbohydrates: 11, fat: 0.6, sugar: 2.6, fiber: 5.1))
+        ]
+        
+        let randomFood = foods.randomElement()!
+        let mockResult = FoodScanResult(
+            foodName: randomFood.0,
+            confidence: Double.random(in: 0.7...0.95),
+            estimatedNutrition: randomFood.1
+        )
+        onResult(mockResult)
+    }
+    
+    private func analyzeFood(image: UIImage) {
+        // In a real implementation, this would use Vision framework
+        // For now, we'll simulate with a delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            let mockResult = FoodScanResult(
+                foodName: "Detected Food",
+                confidence: 0.82,
+                estimatedNutrition: MacroNutrition(calories: 200, protein: 15, carbohydrates: 30, fat: 8, sugar: 5, fiber: 3)
+            )
+            onResult(mockResult)
+        }
+    }
+}
+
+// MARK: - Camera Manager
+class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
+    let session = AVCaptureSession()
+    private var photoOutput = AVCapturePhotoOutput()
+    private var isSessionRunning = false
+    private var photoCompletion: ((UIImage?) -> Void)?
+    
+    // ObservableObject requirement
+    @Published var isSessionActive = false
+    
+    override init() {
+        super.init()
+        setupCamera()
+    }
+    
+    private func setupCamera() {
+        session.beginConfiguration()
+        
+        guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+              let videoDeviceInput = try? AVCaptureDeviceInput(device: videoDevice),
+              session.canAddInput(videoDeviceInput) else {
+            session.commitConfiguration()
+            return
+        }
+        
+        session.addInput(videoDeviceInput)
+        
+        if session.canAddOutput(photoOutput) {
+            session.addOutput(photoOutput)
+        }
+        
+        session.commitConfiguration()
+    }
+    
+    func requestPermission() {
+        AVCaptureDevice.requestAccess(for: .video) { granted in
+            DispatchQueue.main.async {
+                if granted {
+                    self.startSession()
+                }
+            }
+        }
+    }
+    
+    func startSession() {
+        guard !isSessionRunning else { return }
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.session.startRunning()
+            self.isSessionRunning = true
+            DispatchQueue.main.async {
+                self.isSessionActive = true
+            }
+        }
+    }
+    
+    func stopSession() {
+        guard isSessionRunning else { return }
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.session.stopRunning()
+            self.isSessionRunning = false
+            DispatchQueue.main.async {
+                self.isSessionActive = false
+            }
+        }
+    }
+    
+    func capturePhoto(completion: @escaping (UIImage?) -> Void) {
+        photoCompletion = completion
+        let settings = AVCapturePhotoSettings()
+        photoOutput.capturePhoto(with: settings, delegate: self)
+    }
+    
+    // MARK: - AVCapturePhotoCaptureDelegate
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        guard let completion = photoCompletion else { return }
+        
+        if let error = error {
+            print("Error capturing photo: \(error)")
+            completion(nil)
+            return
+        }
+        
+        guard let imageData = photo.fileDataRepresentation(),
+              let image = UIImage(data: imageData) else {
+            completion(nil)
+            return
+        }
+        
+        completion(image)
+        photoCompletion = nil
+    }
+}
+
+// MARK: - Camera Preview View
+struct CameraPreviewView: UIViewRepresentable {
+    let session: AVCaptureSession
+    
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        
+        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        previewLayer.videoGravity = .resizeAspectFill
+        
+        view.layer.addSublayer(previewLayer)
+        
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {
+        // Update frame when view size changes
+        if let previewLayer = uiView.layer.sublayers?.first as? AVCaptureVideoPreviewLayer {
+            previewLayer.frame = uiView.bounds
+        }
     }
 }
 

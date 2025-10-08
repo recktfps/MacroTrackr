@@ -778,9 +778,14 @@ struct FriendRowView: View {
 // MARK: - Privacy Settings View
 struct PrivacySettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var dataManager: DataManager
     @State private var isPrivate = false
     @State private var allowFriendRequests = true
     @State private var shareMealsWithFriends = true
+    @State private var isLoading = false
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
     
     var body: some View {
         NavigationView {
@@ -817,9 +822,78 @@ struct PrivacySettingsView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
-                        // Save privacy settings
+                        savePrivacySettings()
+                    }
+                    .disabled(isLoading)
+                }
+            }
+        }
+        .onAppear {
+            loadCurrentSettings()
+        }
+        .alert("Privacy Settings", isPresented: $showingAlert) {
+            Button("OK") { }
+        } message: {
+            Text(alertMessage)
+        }
+    }
+    
+    private func loadCurrentSettings() {
+        guard let userId = authManager.currentUser?.id.uuidString else { return }
+        
+        Task {
+            do {
+                let profiles: [UserProfile] = try await dataManager.supabase
+                    .from("profiles")
+                    .select()
+                    .eq("id", value: userId)
+                    .execute()
+                    .value
+                
+                if let profile = profiles.first {
+                    await MainActor.run {
+                        self.isPrivate = profile.isPrivate
+                        // Note: allowFriendRequests and shareMealsWithFriends would need to be added to the UserProfile model
+                        // For now, we'll use defaults
+                    }
+                }
+            } catch {
+                print("Error loading privacy settings: \(error)")
+            }
+        }
+    }
+    
+    private func savePrivacySettings() {
+        guard let userId = authManager.currentUser?.id.uuidString else { return }
+        
+        isLoading = true
+        
+        Task {
+            do {
+                try await dataManager.supabase
+                    .from("profiles")
+                    .update([
+                        "is_private": AnyJSON.bool(isPrivate),
+                        "updated_at": AnyJSON.string(Date().ISO8601Format())
+                    ])
+                    .eq("id", value: userId)
+                    .execute()
+                
+                await MainActor.run {
+                    isLoading = false
+                    alertMessage = "Privacy settings saved successfully!"
+                    showingAlert = true
+                    
+                    // Dismiss after a short delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                         dismiss()
                     }
+                }
+            } catch {
+                await MainActor.run {
+                    isLoading = false
+                    alertMessage = "Failed to save privacy settings: \(error.localizedDescription)"
+                    showingAlert = true
                 }
             }
         }
@@ -1042,7 +1116,12 @@ struct FriendStatusButton: View {
                     await dataManager.loadAllUsers(for: currentUserId)
                     await dataManager.loadFriendRequests(for: currentUserId)
                 } catch {
-                    print("Error sending friend request: \(error)")
+                    await MainActor.run {
+                        // Show user-friendly error message
+                        let errorMessage = getFriendlyErrorMessage(from: error)
+                        // You could add a state variable to show alerts here if needed
+                        print("Friend request error: \(errorMessage)")
+                    }
                 }
             }
         case .pendingIncoming:
@@ -1056,13 +1135,35 @@ struct FriendStatusButton: View {
                         await dataManager.loadFriends(for: currentUserId)
                         await dataManager.loadFriendRequests(for: currentUserId)
                     } catch {
-                        print("Error accepting friend request: \(error)")
+                        await MainActor.run {
+                            print("Error accepting friend request: \(error.localizedDescription)")
+                        }
                     }
                 }
             }
         default:
             break
         }
+    }
+    
+    private func getFriendlyErrorMessage(from error: Error) -> String {
+        if let nsError = error as NSError? {
+            switch nsError.code {
+            case 404:
+                return "User not found. Please check the display name."
+            case 409:
+                if nsError.localizedDescription.contains("already sent") {
+                    return "Friend request already sent to this user."
+                } else if nsError.localizedDescription.contains("Already friends") {
+                    return "You are already friends with this user."
+                } else {
+                    return "A friend request already exists with this user."
+                }
+            default:
+                return "Unable to send friend request. Please try again."
+            }
+        }
+        return error.localizedDescription
     }
 }
 

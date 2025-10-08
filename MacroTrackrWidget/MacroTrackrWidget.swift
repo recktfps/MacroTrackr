@@ -1,44 +1,93 @@
 import WidgetKit
 import SwiftUI
 
+// MARK: - Shared Data Manager for Widget
+class WidgetDataManager {
+    static let shared = WidgetDataManager()
+    private let appGroupID = "group.com.macrotrackr.shared"
+    
+    private init() {}
+    
+    func loadTodaysData() -> (macros: MacroNutrition, goals: MacroGoals)? {
+        guard let sharedContainer = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {
+            return nil
+        }
+        
+        let macrosURL = sharedContainer.appendingPathComponent("today_macros.json")
+        let goalsURL = sharedContainer.appendingPathComponent("user_goals.json")
+        
+        do {
+            let macrosData = try Data(contentsOf: macrosURL)
+            let goalsData = try Data(contentsOf: goalsURL)
+            
+            let macros = try JSONDecoder().decode(MacroNutrition.self, from: macrosData)
+            let goals = try JSONDecoder().decode(MacroGoals.self, from: goalsData)
+            
+            return (macros, goals)
+        } catch {
+            print("Widget: Failed to load shared data: \(error)")
+            return nil
+        }
+    }
+}
+
 struct Provider: TimelineProvider {
     func placeholder(in context: Context) -> MacroEntry {
-        MacroEntry(
-            date: Date(),
-            totalMacros: MacroNutrition(calories: 1200, protein: 80, carbohydrates: 120, fat: 45, sugar: 30, fiber: 15),
-            goals: MacroGoals(),
-            progress: MacroProgress(caloriesProgress: 60, proteinProgress: 53, carbohydratesProgress: 48, fatProgress: 69, sugarProgress: 60, fiberProgress: 60)
-        )
+        createEntry(with: nil)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (MacroEntry) -> ()) {
-        let entry = MacroEntry(
-            date: Date(),
-            totalMacros: MacroNutrition(calories: 1200, protein: 80, carbohydrates: 120, fat: 45, sugar: 30, fiber: 15),
-            goals: MacroGoals(),
-            progress: MacroProgress(caloriesProgress: 60, proteinProgress: 53, carbohydratesProgress: 48, fatProgress: 69, sugarProgress: 60, fiberProgress: 60)
-        )
+        let entry = createEntry(with: WidgetDataManager.shared.loadTodaysData())
         completion(entry)
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
         var entries: [MacroEntry] = []
         
+        // Load current data
+        let currentData = WidgetDataManager.shared.loadTodaysData()
+        
         // Generate entries for the next few hours
         let currentDate = Date()
-        for hourOffset in 0 ..< 5 {
+        for hourOffset in 0 ..< 6 {
             let entryDate = Calendar.current.date(byAdding: .hour, value: hourOffset, to: currentDate)!
-            let entry = MacroEntry(
-                date: entryDate,
-                totalMacros: MacroNutrition(calories: 1200, protein: 80, carbohydrates: 120, fat: 45, sugar: 30, fiber: 15),
-                goals: MacroGoals(),
-                progress: MacroProgress(caloriesProgress: 60, proteinProgress: 53, carbohydratesProgress: 48, fatProgress: 69, sugarProgress: 60, fiberProgress: 60)
-            )
+            let entry = createEntry(with: currentData, date: entryDate)
             entries.append(entry)
         }
 
         let timeline = Timeline(entries: entries, policy: .atEnd)
         completion(timeline)
+    }
+    
+    private func createEntry(with data: (macros: MacroNutrition, goals: MacroGoals)?, date: Date = Date()) -> MacroEntry {
+        let macros: MacroNutrition
+        let goals: MacroGoals
+        
+        if let data = data {
+            macros = data.macros
+            goals = data.goals
+        } else {
+            // Fallback to default values
+            macros = MacroNutrition(calories: 1200, protein: 80, carbohydrates: 120, fat: 45, sugar: 30, fiber: 15)
+            goals = MacroGoals()
+        }
+        
+        // Calculate progress percentages
+        let progress = MacroProgress(
+            caloriesProgress: goals.calories > 0 ? (macros.calories / goals.calories) * 100 : 0,
+            proteinProgress: goals.protein > 0 ? (macros.protein / goals.protein) * 100 : 0,
+            carbohydratesProgress: goals.carbohydrates > 0 ? (macros.carbohydrates / goals.carbohydrates) * 100 : 0,
+            fatProgress: goals.fat > 0 ? (macros.fat / goals.fat) * 100 : 0,
+            sugarProgress: goals.sugar > 0 ? (macros.sugar / goals.sugar) * 100 : 0,
+            fiberProgress: goals.fiber > 0 ? (macros.fiber / goals.fiber) * 100 : 0
+        )
+        
+        return MacroEntry(
+            date: date,
+            totalMacros: macros,
+            goals: goals,
+            progress: progress
+        )
     }
 }
 

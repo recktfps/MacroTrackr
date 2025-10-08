@@ -9,6 +9,7 @@ import UserNotifications
 import UIKit
 import AVFoundation
 import Vision
+import WidgetKit
 
 // Full MacroTrackr app with Supabase, Kingfisher, and Realm
 @main
@@ -355,12 +356,14 @@ class DataManager: ObservableObject {
             .execute()
         
         await loadTodayMeals(for: meal.userId)
+        await updateWidgetData(userId: meal.userId) // Update widget when new meal is added
     }
     
-    func uploadImage(_ imageData: Data, fileName: String) async throws -> String {
+    func uploadImage(_ imageData: Data, fileName: String, userId: String) async throws -> String {
+        let path = "\(userId)/\(fileName)"
         let uploadResponse = try await supabase.storage
             .from("meal-images")
-            .upload(fileName, data: imageData)
+            .upload(path, data: imageData)
         
         let publicURL = try supabase.storage
             .from("meal-images")
@@ -370,8 +373,16 @@ class DataManager: ObservableObject {
     }
     
     func uploadProfileImage(_ imageData: Data, userId: String) async throws -> String {
-        let fileName = "profile-\(userId).jpg"
-        return try await uploadImage(imageData, fileName: fileName)
+        let fileName = "\(userId)/profile.jpg"
+        let uploadResponse = try await supabase.storage
+            .from("profile-images")
+            .upload(fileName, data: imageData)
+        
+        let publicURL = try supabase.storage
+            .from("profile-images")
+            .getPublicURL(path: uploadResponse.path)
+        
+        return publicURL.absoluteString
     }
     
     func saveMeal(_ meal: Meal) async throws {
@@ -399,58 +410,80 @@ class DataManager: ObservableObject {
     // MARK: - Friend Request Methods
     
     func sendFriendRequest(fromUserId: String, toDisplayName: String) async throws {
-        // First, find the user by display name
-        let profiles: [UserProfile] = try await supabase
-            .from("profiles")
-            .select()
-            .eq("display_name", value: toDisplayName)
-            .execute()
-            .value
-        
-        guard let targetUser = profiles.first else {
-            throw NSError(domain: "FriendRequestError", code: 404, userInfo: [NSLocalizedDescriptionKey: "User not found"])
+        do {
+            // First, find the user by display name
+            let profiles: [UserProfile] = try await supabase
+                .from("profiles")
+                .select()
+                .eq("display_name", value: toDisplayName)
+                .execute()
+                .value
+            
+            guard let targetUser = profiles.first else {
+                throw NSError(domain: "FriendRequestError", code: 404, userInfo: [NSLocalizedDescriptionKey: "User not found"])
+            }
+            
+            // Don't allow sending friend request to self
+            if fromUserId == targetUser.id {
+                throw NSError(domain: "FriendRequestError", code: 400, userInfo: [NSLocalizedDescriptionKey: "Cannot send friend request to yourself"])
+            }
+            
+            // Check if already friends
+            let existingFriendship: [Friendship] = try await supabase
+                .from("friendships")
+                .select()
+                .or("and(user_id_1.eq.\(fromUserId),user_id_2.eq.\(targetUser.id)),and(user_id_1.eq.\(targetUser.id),user_id_2.eq.\(fromUserId))")
+                .execute()
+                .value
+            
+            if !existingFriendship.isEmpty {
+                throw NSError(domain: "FriendRequestError", code: 409, userInfo: [NSLocalizedDescriptionKey: "Already friends"])
+            }
+            
+            // Check for existing requests
+            let existingRequests: [FriendRequest] = try await supabase
+                .from("friend_requests")
+                .select()
+                .or("and(from_user_id.eq.\(fromUserId),to_user_id.eq.\(targetUser.id)),and(from_user_id.eq.\(targetUser.id),to_user_id.eq.\(fromUserId))")
+                .execute()
+                .value
+            
+            // Handle different scenarios
+            if let existingRequest = existingRequests.first {
+                if existingRequest.fromUserId == fromUserId {
+                    // User already sent a request
+                    throw NSError(domain: "FriendRequestError", code: 409, userInfo: [NSLocalizedDescriptionKey: "Friend request already sent"])
+                } else if existingRequest.toUserId == fromUserId {
+                    // User received a request from this person - accept it instead
+                    try await respondToFriendRequest(requestId: existingRequest.id, status: .accepted, currentUserId: fromUserId)
+                    return
+                }
+            }
+            
+            // Create new friend request
+            let friendRequest = FriendRequest(
+                id: UUID().uuidString,
+                fromUserId: fromUserId,
+                toUserId: targetUser.id,
+                status: .pending,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+            
+            try await supabase
+                .from("friend_requests")
+                .insert(friendRequest)
+                .execute()
+            
+            await loadFriendRequests(for: fromUserId)
+        } catch {
+            // Re-throw with more user-friendly message
+            if let nsError = error as NSError? {
+                throw nsError
+            } else {
+                throw NSError(domain: "FriendRequestError", code: 500, userInfo: [NSLocalizedDescriptionKey: "Unable to send friend request. Please try again."])
+            }
         }
-        
-        // Check if already friends or request exists
-        let existingRequest: [FriendRequest] = try await supabase
-            .from("friend_requests")
-            .select()
-            .or("and(from_user_id.eq.\(fromUserId),to_user_id.eq.\(targetUser.id)),and(from_user_id.eq.\(targetUser.id),to_user_id.eq.\(fromUserId))")
-            .execute()
-            .value
-        
-        if !existingRequest.isEmpty {
-            throw NSError(domain: "FriendRequestError", code: 409, userInfo: [NSLocalizedDescriptionKey: "Friend request already exists"])
-        }
-        
-        // Check if already friends
-        let existingFriendship: [Friendship] = try await supabase
-            .from("friendships")
-            .select()
-            .or("and(user_id_1.eq.\(fromUserId),user_id_2.eq.\(targetUser.id)),and(user_id_1.eq.\(targetUser.id),user_id_2.eq.\(fromUserId))")
-            .execute()
-            .value
-        
-        if !existingFriendship.isEmpty {
-            throw NSError(domain: "FriendRequestError", code: 409, userInfo: [NSLocalizedDescriptionKey: "Already friends"])
-        }
-        
-        // Create friend request
-        let friendRequest = FriendRequest(
-            id: UUID().uuidString,
-            fromUserId: fromUserId,
-            toUserId: targetUser.id,
-            status: .pending,
-            createdAt: Date(),
-            updatedAt: Date()
-        )
-        
-        try await supabase
-            .from("friend_requests")
-            .insert(friendRequest)
-            .execute()
-        
-        await loadFriendRequests(for: fromUserId)
     }
     
     func loadFriendRequests(for userId: String) async {
@@ -721,6 +754,67 @@ class DataManager: ObservableObject {
             .update(["profile_image_url": profileImageURL, "updated_at": Date().ISO8601Format()])
             .eq("id", value: userId)
             .execute()
+    }
+    
+    // MARK: - Widget Data Sharing
+    func updateWidgetData(userId: String) async {
+        
+        // Load today's meals and user goals
+        await loadTodayMeals(for: userId)
+        
+        // Calculate today's totals
+        let todayTotals = todayMeals.reduce(MacroNutrition()) { total, meal in
+            MacroNutrition(
+                calories: total.calories + meal.macros.calories,
+                protein: total.protein + meal.macros.protein,
+                carbohydrates: total.carbohydrates + meal.macros.carbohydrates,
+                fat: total.fat + meal.macros.fat,
+                sugar: total.sugar + meal.macros.sugar,
+                fiber: total.fiber + meal.macros.fiber
+            )
+        }
+        
+        // Load user goals
+        do {
+            let profiles: [UserProfile] = try await supabase
+                .from("profiles")
+                .select()
+                .eq("id", value: userId)
+                .execute()
+                .value
+            
+            if let profile = profiles.first {
+                await saveWidgetData(macros: todayTotals, goals: profile.dailyGoals)
+            }
+        } catch {
+            print("Error loading user goals for widget: \(error)")
+        }
+    }
+    
+    private func saveWidgetData(macros: MacroNutrition, goals: MacroGoals) async {
+        let appGroupID = "group.com.macrotrackr.shared"
+        
+        guard let sharedContainer = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {
+            print("Widget: Failed to access shared container")
+            return
+        }
+        
+        do {
+            // Save macros
+            let macrosData = try JSONEncoder().encode(macros)
+            let macrosURL = sharedContainer.appendingPathComponent("today_macros.json")
+            try macrosData.write(to: macrosURL)
+            
+            // Save goals
+            let goalsData = try JSONEncoder().encode(goals)
+            let goalsURL = sharedContainer.appendingPathComponent("user_goals.json")
+            try goalsData.write(to: goalsURL)
+            
+            // Request widget timeline update
+            WidgetCenter.shared.reloadAllTimelines()
+        } catch {
+            print("Widget: Failed to save shared data: \(error)")
+        }
     }
 }
 
