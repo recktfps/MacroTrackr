@@ -92,21 +92,16 @@ struct StatsView: View {
     }
     
     private func fetchStats(for userId: String, period: StatsPeriod, date: Date) async -> [DailyStats] {
-        // In a real implementation, this would fetch from Supabase
-        // For now, we'll generate mock data
-        return generateMockStats(for: period, date: date)
-    }
-    
-    private func generateMockStats(for period: StatsPeriod, date: Date) -> [DailyStats] {
-        var stats: [DailyStats] = []
         let calendar = Calendar.current
+        var stats: [DailyStats] = []
         
         switch period {
         case .week:
             let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: date)?.start ?? date
             for i in 0..<7 {
                 if let day = calendar.date(byAdding: .day, value: i, to: startOfWeek) {
-                    stats.append(createMockDailyStats(for: day))
+                    let dayStats = await fetchDailyStats(for: userId, date: day)
+                    stats.append(dayStats)
                 }
             }
         case .month:
@@ -115,14 +110,16 @@ struct StatsView: View {
             var currentDate = startOfMonth
             
             while currentDate < endOfMonth {
-                stats.append(createMockDailyStats(for: currentDate))
+                let dayStats = await fetchDailyStats(for: userId, date: currentDate)
+                stats.append(dayStats)
                 currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? currentDate
             }
         case .year:
             let startOfYear = calendar.dateInterval(of: .year, for: date)?.start ?? date
             for i in 0..<12 {
                 if let month = calendar.date(byAdding: .month, value: i, to: startOfYear) {
-                    stats.append(createMockDailyStats(for: month))
+                    let monthStats = await fetchMonthlyStats(for: userId, month: month)
+                    stats.append(monthStats)
                 }
             }
         }
@@ -130,48 +127,122 @@ struct StatsView: View {
         return stats
     }
     
-    private func createMockDailyStats(for date: Date) -> DailyStats {
-        let mockMeals = [
-            Meal(
-                id: UUID().uuidString,
-                userId: "mock",
-                name: "Breakfast",
-                imageURL: nil,
-                ingredients: [],
-                cookingInstructions: nil,
-                macros: MacroNutrition(calories: 400, protein: 25, carbohydrates: 45, fat: 15, sugar: 10, fiber: 5),
-                createdAt: date,
-                mealType: .breakfast
-            )
-        ]
+    private func fetchDailyStats(for userId: String, date: Date) async -> DailyStats {
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
         
-        let totalMacros = mockMeals.reduce(MacroNutrition()) { total, meal in
-            MacroNutrition(
-                calories: total.calories + meal.macros.calories,
-                protein: total.protein + meal.macros.protein,
-                carbohydrates: total.carbohydrates + meal.macros.carbohydrates,
-                fat: total.fat + meal.macros.fat,
-                sugar: total.sugar + meal.macros.sugar,
-                fiber: total.fiber + meal.macros.fiber
+        do {
+            let meals: [Meal] = try await dataManager.supabase
+                .from("meals")
+                .select()
+                .eq("user_id", value: userId)
+                .gte("created_at", value: startOfDay)
+                .lt("created_at", value: endOfDay)
+                .execute()
+                .value
+            
+            let totalMacros = meals.reduce(MacroNutrition()) { total, meal in
+                MacroNutrition(
+                    calories: total.calories + meal.macros.calories,
+                    protein: total.protein + meal.macros.protein,
+                    carbohydrates: total.carbohydrates + meal.macros.carbohydrates,
+                    fat: total.fat + meal.macros.fat,
+                    sugar: total.sugar + meal.macros.sugar,
+                    fiber: total.fiber + meal.macros.fiber
+                )
+            }
+            
+            return DailyStats(
+                date: date,
+                totalCalories: totalMacros.calories,
+                totalProtein: totalMacros.protein,
+                totalCarbs: totalMacros.carbohydrates,
+                totalFat: totalMacros.fat,
+                totalSugar: totalMacros.sugar,
+                goalCalories: 2000, // Default goal, should be fetched from user profile
+                goalProtein: 150,
+                goalCarbs: 250,
+                goalFat: 65,
+                goalSugar: 30,
+                mealCount: meals.count
+            )
+        } catch {
+            print("Error fetching daily stats for \(date): \(error)")
+            return DailyStats(
+                date: date,
+                totalCalories: 0,
+                totalProtein: 0,
+                totalCarbs: 0,
+                totalFat: 0,
+                totalSugar: 0,
+                goalCalories: 2000,
+                goalProtein: 150,
+                goalCarbs: 250,
+                goalFat: 65,
+                goalSugar: 30,
+                mealCount: 0
             )
         }
+    }
+    
+    private func fetchMonthlyStats(for userId: String, month: Date) async -> DailyStats {
+        let calendar = Calendar.current
+        let startOfMonth = calendar.dateInterval(of: .month, for: month)?.start ?? month
+        let endOfMonth = calendar.dateInterval(of: .month, for: month)?.end ?? month
         
-        let goals = MacroGoals()
-        
-        return DailyStats(
-            date: date,
-            totalCalories: totalMacros.calories,
-            totalProtein: totalMacros.protein,
-            totalCarbs: totalMacros.carbohydrates,
-            totalFat: totalMacros.fat,
-            totalSugar: totalMacros.sugar,
-            goalCalories: goals.calories,
-            goalProtein: goals.protein,
-            goalCarbs: goals.carbohydrates,
-            goalFat: goals.fat,
-            goalSugar: goals.sugar,
-            mealCount: mockMeals.count
-        )
+        do {
+            let meals: [Meal] = try await dataManager.supabase
+                .from("meals")
+                .select()
+                .eq("user_id", value: userId)
+                .gte("created_at", value: startOfMonth)
+                .lt("created_at", value: endOfMonth)
+                .execute()
+                .value
+            
+            let totalMacros = meals.reduce(MacroNutrition()) { total, meal in
+                MacroNutrition(
+                    calories: total.calories + meal.macros.calories,
+                    protein: total.protein + meal.macros.protein,
+                    carbohydrates: total.carbohydrates + meal.macros.carbohydrates,
+                    fat: total.fat + meal.macros.fat,
+                    sugar: total.sugar + meal.macros.sugar,
+                    fiber: total.fiber + meal.macros.fiber
+                )
+            }
+            
+            return DailyStats(
+                date: month,
+                totalCalories: totalMacros.calories,
+                totalProtein: totalMacros.protein,
+                totalCarbs: totalMacros.carbohydrates,
+                totalFat: totalMacros.fat,
+                totalSugar: totalMacros.sugar,
+                goalCalories: 2000,
+                goalProtein: 150,
+                goalCarbs: 250,
+                goalFat: 65,
+                goalSugar: 30,
+                mealCount: meals.count
+            )
+        } catch {
+            print("Error fetching monthly stats for \(month): \(error)")
+            return DailyStats(
+                date: month,
+                totalCalories: 0,
+                totalProtein: 0,
+                totalCarbs: 0,
+                totalFat: 0,
+                totalSugar: 0,
+                goalCalories: 2000,
+                goalProtein: 150,
+                goalCarbs: 250,
+                goalFat: 65,
+                goalSugar: 30,
+                mealCount: 0
+            )
+        }
     }
 }
 

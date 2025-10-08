@@ -8,6 +8,8 @@ import Combine
 struct AddMealView: View {
     @EnvironmentObject var dataManager: DataManager
     @EnvironmentObject var authManager: AuthenticationManager
+    @Environment(\.dismiss) private var dismiss
+    let selectedDate: Date?
     @State private var mealName = ""
     @State private var selectedMealType: MealType = .breakfast
     @State private var selectedImage: PhotosPickerItem?
@@ -150,13 +152,16 @@ struct AddMealView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
-                        resetForm()
+                        dismiss()
                     }
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
-                        saveMeal()
+                        Task {
+                            await saveMeal()
+                            dismiss()
+                        }
                     }
                     .disabled(mealName.isEmpty || isLoading)
                 }
@@ -186,19 +191,18 @@ struct AddMealView: View {
         macros = MacroNutrition()
     }
     
-    private func saveMeal() {
+    private func saveMeal() async {
         guard let userId = authManager.currentUser?.id else { return }
         
         isLoading = true
         
-        Task {
-            do {
-                // Upload image if present
-                var imageURL: String?
-                if let mealImage = mealImage {
-                    imageURL = try await uploadImage(mealImage)
-                }
-                
+        do {
+            // Upload image if present
+            var imageURL: String?
+            if let mealImage = mealImage {
+                imageURL = try await uploadImage(mealImage)
+            }
+            
                 let meal = Meal(
                     id: UUID().uuidString,
                     userId: userId.uuidString,
@@ -207,22 +211,21 @@ struct AddMealView: View {
                     ingredients: ingredients.filter { !$0.isEmpty },
                     cookingInstructions: cookingInstructions.isEmpty ? nil : cookingInstructions,
                     macros: macros,
-                    createdAt: Date(),
+                    createdAt: selectedDate ?? Date(),
                     mealType: selectedMealType
                 )
-                
-                try await dataManager.addMeal(meal)
-                
-                await MainActor.run {
-                    resetForm()
-                    isLoading = false
-                }
-            } catch {
-                await MainActor.run {
-                    alertMessage = error.localizedDescription
-                    showingAlert = true
-                    isLoading = false
-                }
+            
+            try await dataManager.addMeal(meal)
+            
+            await MainActor.run {
+                resetForm()
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                alertMessage = error.localizedDescription
+                showingAlert = true
+                isLoading = false
             }
         }
     }
@@ -596,7 +599,7 @@ struct ScanResultView: View {
 }
 
 #Preview {
-    AddMealView()
+            AddMealView(selectedDate: nil)
         .environmentObject(DataManager())
         .environmentObject(AuthenticationManager())
 }

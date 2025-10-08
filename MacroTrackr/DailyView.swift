@@ -48,7 +48,7 @@ struct DailyView: View {
             }
         }
         .sheet(isPresented: $showingAddMeal) {
-            AddMealView()
+            AddMealView(selectedDate: selectedDate)
         }
         .onAppear {
             loadDailyData()
@@ -133,14 +133,19 @@ struct DateSelectorView: View {
             
             Spacer()
             
-            VStack {
-                Text(DateFormatter.fullDateFormatter.string(from: selectedDate))
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                
-                Text(DateFormatter.dayFormatter.string(from: selectedDate))
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+            Button(action: {
+                selectedDate = Date()
+            }) {
+                VStack {
+                    Text(DateFormatter.fullDateFormatter.string(from: selectedDate))
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                    
+                    Text(DateFormatter.dayFormatter.string(from: selectedDate))
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
             }
             
             Spacer()
@@ -446,6 +451,31 @@ struct QuickAddMealButton: View {
             .cornerRadius(12)
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - Today's Meals Section
+struct MacroBadge: View {
+    let label: String
+    let value: String
+    let color: Color
+    
+    var body: some View {
+        HStack(spacing: 2) {
+            Text(label)
+                .font(.caption2)
+                .fontWeight(.medium)
+                .foregroundColor(color)
+            
+            Text(value)
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundColor(.primary)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(color.opacity(0.1))
+        .cornerRadius(4)
     }
 }
 

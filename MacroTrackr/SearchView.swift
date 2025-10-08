@@ -113,40 +113,31 @@ struct SearchView: View {
         isLoading = true
         
         Task {
-            let results = await searchMeals(query: searchText, filter: selectedFilter)
-            
-            await MainActor.run {
-                self.searchResults = results
-                self.isLoading = false
+            do {
+                guard let userId = authManager.currentUser?.id.uuidString else {
+                    await MainActor.run {
+                        self.searchResults = []
+                        self.isLoading = false
+                    }
+                    return
+                }
+                
+                let results = try await dataManager.searchMeals(query: searchText, filter: selectedFilter, userId: userId)
+                
+                await MainActor.run {
+                    self.searchResults = results
+                    self.isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.searchResults = []
+                    self.isLoading = false
+                }
+                print("Search error: \(error)")
             }
         }
     }
     
-    private func searchMeals(query: String, filter: SearchFilter) async -> [Meal] {
-        // In a real implementation, this would search the Supabase database
-        // For now, we'll search through saved meals locally
-        let allMeals = dataManager.savedMeals
-        
-        let filteredMeals = allMeals.filter { meal in
-            let matchesName = meal.name.localizedCaseInsensitiveContains(query)
-            let matchesIngredients = meal.ingredients.contains { ingredient in
-                ingredient.localizedCaseInsensitiveContains(query)
-            }
-            
-            switch filter {
-            case .all:
-                return matchesName || matchesIngredients
-            case .meals:
-                return matchesName
-            case .ingredients:
-                return matchesIngredients
-            case .favorites:
-                return (matchesName || matchesIngredients) && meal.isFavorite
-            }
-        }
-        
-        return filteredMeals
-    }
     
     private func addMealToToday(_ meal: Meal) {
         guard let userId = authManager.currentUser?.id else { return }
@@ -169,19 +160,6 @@ struct SearchView: View {
     }
 }
 
-// MARK: - Search Filter
-enum SearchFilter: CaseIterable {
-    case all, meals, ingredients, favorites
-    
-    var displayName: String {
-        switch self {
-        case .all: return "All"
-        case .meals: return "Meals"
-        case .ingredients: return "Ingredients"
-        case .favorites: return "Favorites"
-        }
-    }
-}
 
 // MARK: - Search Result Row
 struct SearchResultRow: View {

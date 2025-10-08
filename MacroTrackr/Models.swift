@@ -411,26 +411,3 @@ struct DailyStats: Identifiable, Codable {
         return max(goalSugar - totalSugar, 0)
     }
 }
-
-// MARK: - Macro Badge
-struct MacroBadge: View {
-    let label: String
-    let value: String
-    let color: Color
-    
-    var body: some View {
-        HStack(spacing: 4) {
-            Text(label)
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Text(value)
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundColor(color)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(color.opacity(0.1))
-        .cornerRadius(8)
-    }
-}

@@ -816,6 +816,53 @@ class DataManager: ObservableObject {
             print("Widget: Failed to save shared data: \(error)")
         }
     }
+    
+    // MARK: - Search Functionality
+    func searchMeals(query: String, filter: SearchFilter = .all, userId: String) async throws -> [Meal] {
+        
+        var searchQuery = supabase
+            .from("meals")
+            .select("*")
+            .eq("user_id", value: userId)
+        
+        // Apply search filter
+        if !query.isEmpty {
+            switch filter {
+            case .all:
+                searchQuery = searchQuery.or("name.ilike.%\(query)%,ingredients.ilike.%\(query)%")
+            case .meals:
+                searchQuery = searchQuery.ilike("name", pattern: "%\(query)%")
+            case .ingredients:
+                searchQuery = searchQuery.ilike("ingredients", pattern: "%\(query)%")
+            case .favorites:
+                searchQuery = searchQuery.eq("is_favorite", value: true)
+                    .or("name.ilike.%\(query)%,ingredients.ilike.%\(query)%")
+            }
+        } else if filter == .favorites {
+            searchQuery = searchQuery.eq("is_favorite", value: true)
+        }
+        
+        let meals: [Meal] = try await searchQuery
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+        
+        return meals
+    }
+}
+
+// MARK: - Search Filter Enum
+enum SearchFilter: CaseIterable {
+    case all, meals, ingredients, favorites
+    
+    var displayName: String {
+        switch self {
+        case .all: return "All"
+        case .meals: return "Meals"
+        case .ingredients: return "Ingredients"
+        case .favorites: return "Favorites"
+        }
+    }
 }
 
 // MARK: - Main Tab View
@@ -834,7 +881,7 @@ struct MainTabView: View {
                 }
                 .tag(0)
             
-            AddMealView()
+            AddMealView(selectedDate: nil)
                 .tabItem {
                     Image(systemName: "plus.circle.fill")
                     Text("Add Meal")
