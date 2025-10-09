@@ -215,7 +215,7 @@ struct ProfileHeaderView: View {
                     .font(.title2)
                     .fontWeight(.semibold)
                 
-                Text(profile?.email ?? "")
+                Text("@\(profile?.displayName ?? "")")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
@@ -802,7 +802,7 @@ struct UsersListView: View {
         } else {
             return dataManager.allUsers.filter { user in
                 user.user.displayName.localizedCaseInsensitiveContains(searchText) ||
-                user.user.email.localizedCaseInsensitiveContains(searchText)
+                false // Email search removed for privacy
             }
         }
     }
@@ -819,6 +819,8 @@ struct UserRowView: View {
     @EnvironmentObject var dataManager: DataManager
     @EnvironmentObject var authManager: AuthenticationManager
     let userInfo: UserWithFriendshipInfo
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
     
     private var buttonText: String {
         if userInfo.friendshipStatus == .friends {
@@ -864,9 +866,11 @@ struct UserRowView: View {
                 Text(userInfo.user.displayName)
                     .font(.headline)
                 
-                Text(userInfo.user.email)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if userInfo.mutualFriendsCount > 0 {
+                    Text("\(userInfo.mutualFriendsCount) mutual friend\(userInfo.mutualFriendsCount == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
             
             Spacer()
@@ -885,6 +889,11 @@ struct UserRowView: View {
                     .cornerRadius(8)
             }
             .disabled(userInfo.friendshipStatus == .friends || userInfo.friendshipStatus == .pendingOutgoing)
+        }
+        .alert("Error", isPresented: $showingAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(alertMessage)
         }
     }
     
@@ -906,6 +915,14 @@ struct UserRowView: View {
                 }
             } catch {
                 print("Error handling user action: \(error)")
+                await MainActor.run {
+                    if let nsError = error as NSError? {
+                        alertMessage = nsError.localizedDescription
+                    } else {
+                        alertMessage = "An error occurred. Please try again."
+                    }
+                    showingAlert = true
+                }
             }
         }
     }
@@ -934,7 +951,7 @@ struct FriendsListView: View {
                     Text(friend.displayName)
                         .font(.headline)
                     
-                    Text(friend.email)
+                    Text("Friend")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }

@@ -101,7 +101,10 @@ struct StatsView: View {
             for i in 0..<7 {
                 if let day = calendar.date(byAdding: .day, value: i, to: startOfWeek) {
                     let dayStats = await fetchDailyStats(for: userId, date: day)
-                    stats.append(dayStats)
+                    // Only include days with logged meals
+                    if dayStats.mealCount > 0 {
+                        stats.append(dayStats)
+                    }
                 }
             }
         case .month:
@@ -111,7 +114,10 @@ struct StatsView: View {
             
             while currentDate < endOfMonth {
                 let dayStats = await fetchDailyStats(for: userId, date: currentDate)
-                stats.append(dayStats)
+                // Only include days with logged meals
+                if dayStats.mealCount > 0 {
+                    stats.append(dayStats)
+                }
                 currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? currentDate
             }
         case .year:
@@ -119,7 +125,10 @@ struct StatsView: View {
             for i in 0..<12 {
                 if let month = calendar.date(byAdding: .month, value: i, to: startOfYear) {
                     let monthStats = await fetchMonthlyStats(for: userId, month: month)
-                    stats.append(monthStats)
+                    // Only include months with logged meals
+                    if monthStats.mealCount > 0 {
+                        stats.append(monthStats)
+                    }
                 }
             }
         }

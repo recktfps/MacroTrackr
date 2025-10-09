@@ -310,6 +310,15 @@ class DataManager: ObservableObject {
     // Realm for local caching
     private let realm = try! Realm()
     
+    // Realtime subscriptions
+    private var friendRequestsSubscription: Task<Void, Never>?
+    private var mealsSubscription: Task<Void, Never>?
+    
+    deinit {
+        friendRequestsSubscription?.cancel()
+        mealsSubscription?.cancel()
+    }
+    
     func loadTodayMeals(for userId: String) async {
         let today = Calendar.current.startOfDay(for: Date())
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
@@ -357,6 +366,43 @@ class DataManager: ObservableObject {
         
         await loadTodayMeals(for: meal.userId)
         await updateWidgetData(userId: meal.userId) // Update widget when new meal is added
+    }
+    
+    func updateMeal(_ meal: Meal) async throws {
+        try await supabase
+            .from("meals")
+            .update([
+                "name": AnyJSON.string(meal.name),
+                "meal_type": AnyJSON.string(meal.mealType.rawValue),
+                "macros": AnyJSON.object([
+                    "calories": AnyJSON.double(meal.macros.calories),
+                    "protein": AnyJSON.double(meal.macros.protein),
+                    "carbohydrates": AnyJSON.double(meal.macros.carbohydrates),
+                    "fat": AnyJSON.double(meal.macros.fat),
+                    "sugar": AnyJSON.double(meal.macros.sugar),
+                    "fiber": AnyJSON.double(meal.macros.fiber)
+                ]),
+                "ingredients": AnyJSON.array(meal.ingredients.map { AnyJSON.string($0) }),
+                "cooking_instructions": AnyJSON.string(meal.cookingInstructions ?? ""),
+                "image_url": meal.imageURL.map { AnyJSON.string($0) } ?? AnyJSON.null,
+                "updated_at": AnyJSON.string(Date().ISO8601Format())
+            ])
+            .eq("id", value: meal.id)
+            .execute()
+        
+        await loadTodayMeals(for: meal.userId)
+        await updateWidgetData(userId: meal.userId)
+    }
+    
+    func deleteMeal(mealId: String, userId: String) async throws {
+        try await supabase
+            .from("meals")
+            .delete()
+            .eq("id", value: mealId)
+            .execute()
+        
+        await loadTodayMeals(for: userId)
+        await updateWidgetData(userId: userId)
     }
     
     func uploadImage(_ imageData: Data, fileName: String, userId: String) async throws -> String {
@@ -477,8 +523,12 @@ class DataManager: ObservableObject {
             
             await loadFriendRequests(for: fromUserId)
         } catch {
-            // Re-throw with more user-friendly message
-            if let nsError = error as NSError? {
+            // Handle database constraint violations
+            let errorString = "\(error)"
+            
+            if errorString.contains("23505") || errorString.contains("duplicate key") {
+                throw NSError(domain: "FriendRequestError", code: 409, userInfo: [NSLocalizedDescriptionKey: "Friend request already sent to this user"])
+            } else if let nsError = error as NSError? {
                 throw nsError
             } else {
                 throw NSError(domain: "FriendRequestError", code: 500, userInfo: [NSLocalizedDescriptionKey: "Unable to send friend request. Please try again."])
@@ -817,6 +867,65 @@ class DataManager: ObservableObject {
         }
     }
     
+    // MARK: - Realtime Subscriptions
+    func subscribeToFriendRequests(userId: String) {
+        friendRequestsSubscription = Task {
+            let channel = await supabase.channel("friend_requests_\(userId)")
+            
+            let insertions = await channel.postgresChange(
+                InsertAction.self,
+                schema: "public",
+                table: "friend_requests",
+                filter: "to_user_id=eq.\(userId)"
+            )
+            
+            let updates = await channel.postgresChange(
+                UpdateAction.self,
+                schema: "public",
+                table: "friend_requests",
+                filter: "from_user_id=eq.\(userId)"
+            )
+            
+            await channel.subscribe()
+            
+            for await change in insertions {
+                print("New friend request received!")
+                await loadFriendRequests(for: userId)
+            }
+            
+            for await change in updates {
+                print("Friend request updated!")
+                await loadFriendRequests(for: userId)
+            }
+        }
+    }
+    
+    func subscribeToMeals(userId: String) {
+        mealsSubscription = Task {
+            let channel = await supabase.channel("meals_\(userId)")
+            
+            let changes = await channel.postgresChange(
+                AnyAction.self,
+                schema: "public",
+                table: "meals",
+                filter: "user_id=eq.\(userId)"
+            )
+            
+            await channel.subscribe()
+            
+            for await _ in changes {
+                print("Meals updated - reloading...")
+                await loadTodayMeals(for: userId)
+                await updateWidgetData(userId: userId)
+            }
+        }
+    }
+    
+    func unsubscribeFromRealtime() {
+        friendRequestsSubscription?.cancel()
+        mealsSubscription?.cancel()
+    }
+    
     // MARK: - Search Functionality
     func searchMeals(query: String, filter: SearchFilter = .all, userId: String) async throws -> [Meal] {
         
@@ -916,7 +1025,14 @@ struct MainTabView: View {
                     await dataManager.loadTodayMeals(for: userId)
                     await dataManager.loadSavedMeals(for: userId)
                 }
+                // Subscribe to realtime updates
+                dataManager.subscribeToFriendRequests(userId: userId)
+                dataManager.subscribeToMeals(userId: userId)
             }
+        }
+        .onDisappear {
+            // Cleanup realtime subscriptions
+            dataManager.unsubscribeFromRealtime()
         }
         .onAppear {
             authManager.checkAuthStatus()

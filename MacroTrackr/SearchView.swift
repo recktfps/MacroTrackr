@@ -8,6 +8,27 @@ struct SearchView: View {
     @State private var selectedFilter: SearchFilter = .all
     @State private var searchResults: [Meal] = []
     @State private var isLoading = false
+    @State private var selectedMealType: MealType? = nil
+    @State private var showingAddConfirmation = false
+    @State private var confirmationMessage = ""
+    @State private var editingMeal: Meal? = nil
+    
+    var sortedResults: [Meal] {
+        var results = searchResults
+        
+        // Filter by meal type if selected
+        if let mealType = selectedMealType {
+            results = results.filter { $0.mealType == mealType }
+        }
+        
+        // Sort: favorites first, then by name
+        return results.sorted { meal1, meal2 in
+            if meal1.isFavorite != meal2.isFavorite {
+                return meal1.isFavorite
+            }
+            return meal1.name < meal2.name
+        }
+    }
     
     var body: some View {
         NavigationView {
@@ -45,6 +66,24 @@ struct SearchView: View {
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
                 
+                // Meal Type Filter
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        FilterChip(title: "All", isSelected: selectedMealType == nil) {
+                            selectedMealType = nil
+                            performSearch()
+                        }
+                        ForEach(MealType.allCases, id: \.self) { type in
+                            FilterChip(title: type.displayName, isSelected: selectedMealType == type) {
+                                selectedMealType = type
+                                performSearch()
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+                .padding(.vertical, 8)
+                
                 // Search Results
                 if isLoading {
                     Spacer()
@@ -81,9 +120,37 @@ struct SearchView: View {
                     .padding()
                     Spacer()
                 } else {
-                    List(searchResults) { meal in
-                        SearchResultRow(meal: meal) {
-                            addMealToToday(meal)
+                    List {
+                        // Favorites Section
+                        let favorites = sortedResults.filter { $0.isFavorite }
+                        if !favorites.isEmpty {
+                            Section(header: Text("Favorites ⭐").font(.headline)) {
+                                ForEach(favorites) { meal in
+                                    SearchResultRow(meal: meal, onAddToToday: {
+                                        addMealToToday(meal)
+                                    }, onEdit: {
+                                        editingMeal = meal
+                                    }, onToggleFavorite: {
+                                        toggleFavorite(meal)
+                                    })
+                                }
+                            }
+                        }
+                        
+                        // Regular Meals Section
+                        let regularMeals = sortedResults.filter { !$0.isFavorite }
+                        if !regularMeals.isEmpty {
+                            Section(header: favorites.isEmpty ? nil : Text("Other Meals").font(.headline)) {
+                                ForEach(regularMeals) { meal in
+                                    SearchResultRow(meal: meal, onAddToToday: {
+                                        addMealToToday(meal)
+                                    }, onEdit: {
+                                        editingMeal = meal
+                                    }, onToggleFavorite: {
+                                        toggleFavorite(meal)
+                                    })
+                                }
+                            }
                         }
                     }
                     .listStyle(PlainListStyle())
@@ -91,6 +158,34 @@ struct SearchView: View {
             }
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.large)
+            .overlay(
+                // Confirmation Toast
+                VStack {
+                    if showingAddConfirmation {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                            Text(confirmationMessage)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                        }
+                        .padding()
+                        .background(Color(.systemBackground))
+                        .cornerRadius(10)
+                        .shadow(radius: 10)
+                        .padding()
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    Spacer()
+                }
+                .animation(.spring(), value: showingAddConfirmation)
+            )
+        }
+        .sheet(item: $editingMeal) { meal in
+            EditMealView(meal: meal)
+                .onDisappear {
+                    performSearch() // Refresh results after editing
+                }
         }
         .onChange(of: searchText) { _, newValue in
             if newValue.isEmpty {
@@ -156,6 +251,46 @@ struct SearchView: View {
         
         Task {
             try? await dataManager.addMeal(todayMeal)
+            await MainActor.run {
+                confirmationMessage = "\(meal.name) added to today!"
+                showingAddConfirmation = true
+                
+                // Auto-dismiss after 2 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    showingAddConfirmation = false
+                }
+            }
+        }
+    }
+    
+    private func toggleFavorite(_ meal: Meal) {
+        Task {
+            var updatedMeal = meal
+            updatedMeal.isFavorite.toggle()
+            try? await dataManager.updateMeal(updatedMeal)
+            
+            // Refresh search results
+            performSearch()
+        }
+    }
+}
+
+// MARK: - Filter Chip
+struct FilterChip: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(isSelected ? .semibold : .regular)
+                .foregroundColor(isSelected ? .white : .primary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(isSelected ? Color.blue : Color(.systemGray5))
+                .cornerRadius(20)
         }
     }
 }
@@ -165,6 +300,8 @@ struct SearchView: View {
 struct SearchResultRow: View {
     let meal: Meal
     let onAddToToday: () -> Void
+    let onEdit: () -> Void
+    let onToggleFavorite: () -> Void
     
     var body: some View {
         HStack(spacing: 12) {
@@ -186,10 +323,18 @@ struct SearchResultRow: View {
             
             // Meal Info
             VStack(alignment: .leading, spacing: 4) {
-                Text(meal.name)
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
+                HStack {
+                    Text(meal.name)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    
+                    if meal.isFavorite {
+                        Image(systemName: "star.fill")
+                            .font(.caption)
+                            .foregroundColor(.yellow)
+                    }
+                }
                 
                 Text(meal.mealType.displayName)
                     .font(.subheadline)
@@ -212,11 +357,28 @@ struct SearchResultRow: View {
             
             Spacer()
             
-            // Add to Today Button
-            Button(action: onAddToToday) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.blue)
+            // Action Buttons
+            HStack(spacing: 12) {
+                // Favorite Button
+                Button(action: onToggleFavorite) {
+                    Image(systemName: meal.isFavorite ? "star.fill" : "star")
+                        .font(.title3)
+                        .foregroundColor(meal.isFavorite ? .yellow : .gray)
+                }
+                
+                // Edit Button
+                Button(action: onEdit) {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.orange)
+                }
+                
+                // Add to Today Button
+                Button(action: onAddToToday) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.blue)
+                }
             }
         }
         .padding(.vertical, 4)

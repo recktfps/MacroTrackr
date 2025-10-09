@@ -22,6 +22,7 @@ struct AddMealView: View {
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var isLoading = false
+    @State private var saveAsPreset = false
     
     var body: some View {
         NavigationView {
@@ -146,6 +147,18 @@ struct AddMealView: View {
                     MacroInputField(title: "Sugar", value: $macros.sugar, unit: "g")
                     MacroInputField(title: "Fiber", value: $macros.fiber, unit: "g")
                 }
+                
+                Section {
+                    Toggle(isOn: $saveAsPreset) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Save as Preset")
+                                .font(.headline)
+                            Text("Add to your saved meals library for quick access later")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
             }
             .navigationTitle("Add Meal")
             .navigationBarTitleDisplayMode(.inline)
@@ -203,6 +216,7 @@ struct AddMealView: View {
                 imageURL = try await uploadImage(mealImage)
             }
             
+                // Always add to daily meals log
                 let meal = Meal(
                     id: UUID().uuidString,
                     userId: userId.uuidString,
@@ -216,6 +230,11 @@ struct AddMealView: View {
                 )
             
             try await dataManager.addMeal(meal)
+            
+            // Optionally save as preset for future use
+            if saveAsPreset {
+                try await dataManager.saveMeal(meal)
+            }
             
             await MainActor.run {
                 resetForm()
