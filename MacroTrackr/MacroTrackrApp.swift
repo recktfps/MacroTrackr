@@ -419,10 +419,20 @@ class DataManager: ObservableObject {
     }
     
     func uploadProfileImage(_ imageData: Data, userId: String) async throws -> String {
-        let fileName = "\(userId)/profile.jpg"
+        let fileName = "profile_\(userId).jpg"
+        
+        // First, try to delete existing profile image if it exists
+        do {
+            try await supabase.storage
+                .from("profile-images")
+                .remove(paths: [fileName])
+        } catch {
+            // Ignore error if file doesn't exist
+        }
+        
         let uploadResponse = try await supabase.storage
             .from("profile-images")
-            .upload(fileName, data: imageData)
+            .upload(fileName, data: imageData, options: FileOptions(upsert: true))
         
         let publicURL = try supabase.storage
             .from("profile-images")
@@ -584,21 +594,10 @@ class DataManager: ObservableObject {
             
             guard let request = requests.first else { return }
             
-            // Create friendship (ensure user_id_1 < user_id_2)
-            let userId1 = min(request.fromUserId, request.toUserId)
-            let userId2 = max(request.fromUserId, request.toUserId)
-            
-            let friendship = Friendship(
-                id: UUID().uuidString,
-                userId1: userId1,
-                userId2: userId2,
-                createdAt: Date()
-            )
-            
-            try await supabase
-                .from("friendships")
-                .insert(friendship)
-                .execute()
+            // Create friendship using the database trigger instead of direct insert
+            // The handle_accepted_friend_request trigger will create the friendship
+            // This avoids RLS policy issues
+            print("Friend request accepted, trigger should create friendship")
         }
         
         // Reload friend requests

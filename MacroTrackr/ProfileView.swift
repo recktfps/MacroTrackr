@@ -808,8 +808,38 @@ struct UsersListView: View {
     }
     
     var body: some View {
-        List(filteredUsers) { userInfo in
-            UserRowView(userInfo: userInfo)
+        if searchText.isEmpty {
+            List(filteredUsers) { userInfo in
+                UserRowView(userInfo: userInfo)
+            }
+        } else if filteredUsers.isEmpty {
+            VStack(spacing: 16) {
+                Image(systemName: "person.crop.circle.badge.questionmark")
+                    .font(.system(size: 50))
+                    .foregroundColor(.secondary)
+                
+                Text("No users found")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Text("No users match '\(searchText)'. Try a different search term.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                
+                if searchText.count >= 3 {
+                    Text("Tip: Search by display name")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .italic()
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            List(filteredUsers) { userInfo in
+                UserRowView(userInfo: userInfo)
+            }
         }
     }
 }
@@ -905,10 +935,17 @@ struct UserRowView: View {
                 switch userInfo.friendshipStatus {
                 case .notFriends:
                     try await dataManager.sendFriendRequest(fromUserId: currentUserId, toDisplayName: userInfo.user.displayName)
+                    // Refresh the user list to update button states
+                    await dataManager.loadAllUsers(for: currentUserId)
+                    await dataManager.loadFriendRequests(for: currentUserId)
                 case .pendingIncoming:
                     // Find the friend request and accept it
                     if let request = dataManager.pendingFriendRequests.first(where: { $0.fromUserId == userInfo.user.id }) {
                         try await dataManager.respondToFriendRequest(requestId: request.id, status: .accepted, currentUserId: currentUserId)
+                        // Refresh the user list and friend requests
+                        await dataManager.loadAllUsers(for: currentUserId)
+                        await dataManager.loadFriendRequests(for: currentUserId)
+                        await dataManager.loadFriends(for: currentUserId)
                     }
                 default:
                     break
@@ -975,55 +1012,40 @@ struct FriendsListView: View {
 struct FriendRequestsView: View {
     @EnvironmentObject var dataManager: DataManager
     @EnvironmentObject var authManager: AuthenticationManager
+    @State private var requestUserProfiles: [String: UserProfile] = [:]
     
     var body: some View {
         List(dataManager.pendingFriendRequests) { request in
-            HStack {
-                AsyncImage(url: URL(string: "")) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Image(systemName: "person.circle.fill")
-                        .font(.title)
-                        .foregroundColor(.secondary)
-                }
-                .frame(width: 50, height: 50)
-                .clipShape(Circle())
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("User")
-                        .font(.headline)
+            FriendRequestRowView(
+                request: request,
+                userProfile: requestUserProfiles[request.fromUserId],
+                onAccept: { acceptRequest(request) },
+                onDecline: { declineRequest(request) }
+            )
+        }
+        .onAppear {
+            loadRequestUserProfiles()
+        }
+    }
+    
+    private func loadRequestUserProfiles() {
+        Task {
+            for request in dataManager.pendingFriendRequests {
+                do {
+                    let profiles: [UserProfile] = try await dataManager.supabase
+                        .from("profiles")
+                        .select()
+                        .eq("id", value: request.fromUserId)
+                        .execute()
+                        .value
                     
-                    Text("Wants to be friends")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
-                
-                HStack(spacing: 8) {
-                    Button("Accept") {
-                        acceptRequest(request)
+                    if let profile = profiles.first {
+                        await MainActor.run {
+                            requestUserProfiles[request.fromUserId] = profile
+                        }
                     }
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.green)
-                    .cornerRadius(8)
-                    
-                    Button("Decline") {
-                        declineRequest(request)
-                    }
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.red)
-                    .cornerRadius(8)
+                } catch {
+                    print("Error loading user profile for request: \(error)")
                 }
             }
         }
@@ -1034,6 +1056,8 @@ struct FriendRequestsView: View {
         
         Task {
             try? await dataManager.respondToFriendRequest(requestId: request.id, status: .accepted, currentUserId: currentUserId)
+            await dataManager.loadFriendRequests(for: currentUserId)
+            await dataManager.loadFriends(for: currentUserId)
         }
     }
     
@@ -1042,6 +1066,66 @@ struct FriendRequestsView: View {
         
         Task {
             try? await dataManager.respondToFriendRequest(requestId: request.id, status: .declined, currentUserId: currentUserId)
+            await dataManager.loadFriendRequests(for: currentUserId)
+        }
+    }
+}
+
+// MARK: - Friend Request Row View
+struct FriendRequestRowView: View {
+    let request: FriendRequest
+    let userProfile: UserProfile?
+    let onAccept: () -> Void
+    let onDecline: () -> Void
+    
+    var body: some View {
+        HStack {
+            AsyncImage(url: URL(string: userProfile?.profileImageURL ?? "")) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } placeholder: {
+                Image(systemName: "person.circle.fill")
+                    .font(.title)
+                    .foregroundColor(.secondary)
+            }
+            .frame(width: 50, height: 50)
+            .clipShape(Circle())
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(userProfile?.displayName ?? "Unknown User")
+                    .font(.headline)
+                
+                Text("Wants to be friends")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            HStack(spacing: 8) {
+                Button("Accept") {
+                    onAccept()
+                }
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.green)
+                .cornerRadius(8)
+                
+                Button("Decline") {
+                    onDecline()
+                }
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.red)
+                .cornerRadius(8)
+            }
         }
     }
 }

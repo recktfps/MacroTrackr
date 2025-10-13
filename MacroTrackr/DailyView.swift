@@ -463,13 +463,11 @@ struct MacroBadge: View {
     var body: some View {
         HStack(spacing: 2) {
             Text(label)
-                .font(.caption2)
-                .fontWeight(.medium)
+                .font(.system(size: 10, weight: .medium))
                 .foregroundColor(color)
             
             Text(value)
-                .font(.caption2)
-                .fontWeight(.semibold)
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(.primary)
         }
         .padding(.horizontal, 6)
