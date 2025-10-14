@@ -26,7 +26,35 @@
 		05124E7F2E94953400D04311 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05124E5C2E94953400D04311 /* ProfileView.swift */; };
 		05124E802E94953400D04311 /* DailyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05124E5D2E94953400D04311 /* DailyView.swift */; };
 		05124E812E94953400D04311 /* MealDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05124E5E2E94953400D04311 /* MealDetailView.swift */; };
+		059F008E2E9DAB140004C327 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 059F008D2E9DAB140004C327 /* WidgetKit.framework */; };
+		059F00902E9DAB140004C327 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 059F008F2E9DAB140004C327 /* SwiftUI.framework */; };
+		059F009F2E9DAB160004C327 /* MacroTrackrWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 059F008B2E9DAB140004C327 /* MacroTrackrWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		059F00AA2E9DB5A00004C327 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05124E572E94953400D04311 /* Models.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		059F009D2E9DAB160004C327 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 05124E472E94953400D04311 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 059F008A2E9DAB140004C327;
+			remoteInfo = MacroTrackrWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		059F00A02E9DAB160004C327 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				059F009F2E9DAB160004C327 /* MacroTrackrWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		05124E4F2E94953400D04311 /* MacroTrackr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacroTrackr.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -43,7 +71,32 @@
 		05124E5C2E94953400D04311 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		05124E5D2E94953400D04311 /* DailyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyView.swift; sourceTree = "<group>"; };
 		05124E5E2E94953400D04311 /* MealDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MealDetailView.swift; sourceTree = "<group>"; };
+		059F008B2E9DAB140004C327 /* MacroTrackrWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MacroTrackrWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		059F008D2E9DAB140004C327 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		059F008F2E9DAB140004C327 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		059F00A92E9DB42A0004C327 /* MacroTrackrWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MacroTrackrWidgetExtension.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		059F00A32E9DAB160004C327 /* Exceptions for "MacroTrackrWidget" folder in "MacroTrackrWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 059F008A2E9DAB140004C327 /* MacroTrackrWidgetExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		059F00912E9DAB140004C327 /* MacroTrackrWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				059F00A32E9DAB160004C327 /* Exceptions for "MacroTrackrWidget" folder in "MacroTrackrWidgetExtension" target */,
+			);
+			path = MacroTrackrWidget;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		05124E4C2E94953400D04311 /* Frameworks */ = {
@@ -61,13 +114,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		059F00882E9DAB140004C327 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				059F00902E9DAB140004C327 /* SwiftUI.framework in Frameworks */,
+				059F008E2E9DAB140004C327 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		05124E462E94953400D04311 = {
 			isa = PBXGroup;
 			children = (
+				059F00A92E9DB42A0004C327 /* MacroTrackrWidgetExtension.entitlements */,
 				05124E512E94953400D04311 /* MacroTrackr */,
+				059F00912E9DAB140004C327 /* MacroTrackrWidget */,
+				059F008C2E9DAB140004C327 /* Frameworks */,
 				05124E502E94953400D04311 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -76,6 +141,7 @@
 			isa = PBXGroup;
 			children = (
 				05124E4F2E94953400D04311 /* MacroTrackr.app */,
+				059F008B2E9DAB140004C327 /* MacroTrackrWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -100,6 +166,15 @@
 			path = MacroTrackr;
 			sourceTree = "<group>";
 		};
+		059F008C2E9DAB140004C327 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				059F008D2E9DAB140004C327 /* WidgetKit.framework */,
+				059F008F2E9DAB140004C327 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -110,10 +185,12 @@
 				05124E4B2E94953400D04311 /* Sources */,
 				05124E4C2E94953400D04311 /* Frameworks */,
 				05124E4D2E94953400D04311 /* Resources */,
+				059F00A02E9DAB160004C327 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				059F009E2E9DAB160004C327 /* PBXTargetDependency */,
 			);
 			name = MacroTrackr;
 			packageProductDependencies = (
@@ -130,6 +207,28 @@
 			productReference = 05124E4F2E94953400D04311 /* MacroTrackr.app */;
 			productType = "com.apple.product-type.application";
 		};
+		059F008A2E9DAB140004C327 /* MacroTrackrWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 059F00A42E9DAB160004C327 /* Build configuration list for PBXNativeTarget "MacroTrackrWidgetExtension" */;
+			buildPhases = (
+				059F00872E9DAB140004C327 /* Sources */,
+				059F00882E9DAB140004C327 /* Frameworks */,
+				059F00892E9DAB140004C327 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				059F00912E9DAB140004C327 /* MacroTrackrWidget */,
+			);
+			name = MacroTrackrWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = MacroTrackrWidgetExtension;
+			productReference = 059F008B2E9DAB140004C327 /* MacroTrackrWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -141,6 +240,9 @@
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					05124E4E2E94953400D04311 = {
+						CreatedOnToolsVersion = 26.0.1;
+					};
+					059F008A2E9DAB140004C327 = {
 						CreatedOnToolsVersion = 26.0.1;
 					};
 				};
@@ -165,6 +267,7 @@
 			projectRoot = "";
 			targets = (
 				05124E4E2E94953400D04311 /* MacroTrackr */,
+				059F008A2E9DAB140004C327 /* MacroTrackrWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -175,6 +278,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				05124E792E94953400D04311 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		059F00892E9DAB140004C327 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -198,7 +308,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		059F00872E9DAB140004C327 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				059F00AA2E9DB5A00004C327 /* Models.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		059F009E2E9DAB160004C327 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 059F008A2E9DAB140004C327 /* MacroTrackrWidgetExtension */;
+			targetProxy = 059F009D2E9DAB160004C327 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		05124E582E94953600D04311 /* Debug */ = {
@@ -414,6 +540,73 @@
 			};
 			name = Release;
 		};
+		059F00A12E9DAB160004C327 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = MacroTrackrWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7H5489C69N;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MacroTrackrWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MacroTrackrWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = NA.MacroTrackr.MacroTrackrWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		059F00A22E9DAB160004C327 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = MacroTrackrWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7H5489C69N;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MacroTrackrWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MacroTrackrWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = NA.MacroTrackr.MacroTrackrWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -431,6 +624,15 @@
 			buildConfigurations = (
 				05124E5B2E94953600D04311 /* Debug */,
 				05124E5C2E94953600D04311 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		059F00A42E9DAB160004C327 /* Build configuration list for PBXNativeTarget "MacroTrackrWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				059F00A12E9DAB160004C327 /* Debug */,
+				059F00A22E9DAB160004C327 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

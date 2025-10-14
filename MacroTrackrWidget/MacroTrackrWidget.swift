@@ -166,8 +166,8 @@ struct SmallWidgetView: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .padding()
-        .background(Color(.systemBackground))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 }
 
@@ -176,7 +176,7 @@ struct MediumWidgetView: View {
     let entry: MacroEntry
     
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             // Header
             HStack {
                 Text("MacroTrackr")
@@ -192,7 +192,7 @@ struct MediumWidgetView: View {
             }
             
             // Macro Progress Grid
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 8) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 6) {
                 MacroWidgetCard(
                     title: "Calories",
                     current: Int(entry.totalMacros.calories),
@@ -226,8 +226,8 @@ struct MediumWidgetView: View {
                 )
             }
         }
-        .padding()
-        .background(Color(.systemBackground))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 }
 
@@ -236,7 +236,7 @@ struct LargeWidgetView: View {
     let entry: MacroEntry
     
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             // Header
             HStack {
                 Text("MacroTrackr")
@@ -259,7 +259,7 @@ struct LargeWidgetView: View {
             }
             
             // All Macros
-            VStack(spacing: 12) {
+            VStack(spacing: 8) {
                 MacroWidgetRow(
                     title: "Calories",
                     current: Int(entry.totalMacros.calories),
@@ -315,8 +315,8 @@ struct LargeWidgetView: View {
                 )
             }
         }
-        .padding()
-        .background(Color(.systemBackground))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 }
 
@@ -351,7 +351,7 @@ struct MacroWidgetCard: View {
                 .scaleEffect(x: 1, y: 1.5, anchor: .center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background(Color(.systemGray6))
         .cornerRadius(8)
     }

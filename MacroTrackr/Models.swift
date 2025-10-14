@@ -37,7 +37,7 @@ struct MacroGoals: Codable {
     }
 }
 
-struct MacroNutrition: Codable {
+struct MacroNutrition: Codable, Equatable {
     var calories: Double = 0
     var protein: Double = 0
     var carbohydrates: Double = 0
@@ -59,7 +59,7 @@ struct Meal: Codable, Identifiable {
     var cookingInstructions: String?
     var macros: MacroNutrition
     let createdAt: Date
-    var mealType: MealType
+    var mealType: MealType = .snack
     var isFavorite: Bool = false
     
     enum CodingKeys: String, CodingKey {
@@ -73,6 +73,49 @@ struct Meal: Codable, Identifiable {
         case createdAt = "created_at"
         case mealType = "meal_type"
         case isFavorite = "is_favorite"
+    }
+    
+    init(id: String, userId: String, name: String, imageURL: String? = nil, ingredients: [String] = [], cookingInstructions: String? = nil, macros: MacroNutrition, createdAt: Date, mealType: MealType = .snack, isFavorite: Bool = false) {
+        self.id = id
+        self.userId = userId
+        self.name = name
+        self.imageURL = imageURL
+        self.ingredients = ingredients
+        self.cookingInstructions = cookingInstructions
+        self.macros = macros
+        self.createdAt = createdAt
+        self.mealType = mealType
+        self.isFavorite = isFavorite
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decode(String.self, forKey: .id)
+        userId = try container.decode(String.self, forKey: .userId)
+        name = try container.decode(String.self, forKey: .name)
+        imageURL = try container.decodeIfPresent(String.self, forKey: .imageURL)
+        ingredients = try container.decodeIfPresent([String].self, forKey: .ingredients) ?? []
+        cookingInstructions = try container.decodeIfPresent(String.self, forKey: .cookingInstructions)
+        macros = try container.decode(MacroNutrition.self, forKey: .macros)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        mealType = try container.decodeIfPresent(MealType.self, forKey: .mealType) ?? .snack
+        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        try container.encode(id, forKey: .id)
+        try container.encode(userId, forKey: .userId)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(imageURL, forKey: .imageURL)
+        try container.encode(ingredients, forKey: .ingredients)
+        try container.encodeIfPresent(cookingInstructions, forKey: .cookingInstructions)
+        try container.encode(macros, forKey: .macros)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(mealType, forKey: .mealType)
+        try container.encode(isFavorite, forKey: .isFavorite)
     }
 }
 

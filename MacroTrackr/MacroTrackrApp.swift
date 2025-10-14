@@ -419,26 +419,44 @@ class DataManager: ObservableObject {
     }
     
     func uploadProfileImage(_ imageData: Data, userId: String) async throws -> String {
-        let fileName = "profile_\(userId).jpg"
+        let fileName = "\(userId)/profile.jpg"
+        
+        print("Attempting to upload profile image for user: \(userId)")
         
         // First, try to delete existing profile image if it exists
         do {
             try await supabase.storage
                 .from("profile-images")
                 .remove(paths: [fileName])
+            print("Deleted existing profile image")
         } catch {
-            // Ignore error if file doesn't exist
+            print("No existing profile image to delete: \(error)")
         }
         
-        let uploadResponse = try await supabase.storage
-            .from("profile-images")
-            .upload(fileName, data: imageData, options: FileOptions(upsert: true))
-        
-        let publicURL = try supabase.storage
-            .from("profile-images")
-            .getPublicURL(path: uploadResponse.path)
-        
-        return publicURL.absoluteString
+        do {
+            let uploadResponse = try await supabase.storage
+                .from("profile-images")
+                .upload(fileName, data: imageData, options: FileOptions(
+                    cacheControl: "3600",
+                    contentType: "image/jpeg",
+                    upsert: true
+                ))
+            
+            print("Successfully uploaded profile image: \(uploadResponse.path)")
+            
+            let publicURL = try supabase.storage
+                .from("profile-images")
+                .getPublicURL(path: uploadResponse.path)
+            
+            print("Generated public URL: \(publicURL.absoluteString)")
+            return publicURL.absoluteString
+            
+        } catch {
+            print("Upload failed with error: \(error)")
+            throw NSError(domain: "UploadError", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Failed to upload profile image: \(error.localizedDescription)"
+            ])
+        }
     }
     
     func saveMeal(_ meal: Meal) async throws {
@@ -466,6 +484,8 @@ class DataManager: ObservableObject {
     // MARK: - Friend Request Methods
     
     func sendFriendRequest(fromUserId: String, toDisplayName: String) async throws {
+        print("Sending friend request from \(fromUserId) to \(toDisplayName)")
+        
         do {
             // First, find the user by display name
             let profiles: [UserProfile] = try await supabase
@@ -475,14 +495,20 @@ class DataManager: ObservableObject {
                 .execute()
                 .value
             
+            print("Found \(profiles.count) users with display name: \(toDisplayName)")
+            
             guard let targetUser = profiles.first else {
-                throw NSError(domain: "FriendRequestError", code: 404, userInfo: [NSLocalizedDescriptionKey: "User not found"])
+                print("User not found: \(toDisplayName)")
+                throw NSError(domain: "FriendRequestError", code: 404, userInfo: [NSLocalizedDescriptionKey: "User '\(toDisplayName)' not found"])
             }
             
             // Don't allow sending friend request to self
             if fromUserId == targetUser.id {
+                print("Cannot send friend request to self")
                 throw NSError(domain: "FriendRequestError", code: 400, userInfo: [NSLocalizedDescriptionKey: "Cannot send friend request to yourself"])
             }
+            
+            print("Target user found: \(targetUser.id)")
             
             // Check if already friends
             let existingFriendship: [Friendship] = try await supabase
@@ -492,8 +518,11 @@ class DataManager: ObservableObject {
                 .execute()
                 .value
             
+            print("Found \(existingFriendship.count) existing friendships")
+            
             if !existingFriendship.isEmpty {
-                throw NSError(domain: "FriendRequestError", code: 409, userInfo: [NSLocalizedDescriptionKey: "Already friends"])
+                print("Already friends with this user")
+                throw NSError(domain: "FriendRequestError", code: 409, userInfo: [NSLocalizedDescriptionKey: "Already friends with \(toDisplayName)"])
             }
             
             // Check for existing requests
@@ -805,6 +834,17 @@ class DataManager: ObservableObject {
             .execute()
     }
     
+    func updateUserProfile(userId: String, isPrivate: Bool) async throws {
+        try await supabase
+            .from("profiles")
+            .update([
+                "is_private": AnyJSON.bool(isPrivate),
+                "updated_at": AnyJSON.string(Date().ISO8601Format())
+            ])
+            .eq("id", value: userId)
+            .execute()
+    }
+    
     // MARK: - Widget Data Sharing
     func updateWidgetData(userId: String) async {
         
@@ -1023,6 +1063,9 @@ struct MainTabView: View {
                 Task {
                     await dataManager.loadTodayMeals(for: userId)
                     await dataManager.loadSavedMeals(for: userId)
+                    await dataManager.loadFriendRequests(for: userId)
+                    await dataManager.loadFriends(for: userId)
+                    await dataManager.loadAllUsers(for: userId)
                 }
                 // Subscribe to realtime updates
                 dataManager.subscribeToFriendRequests(userId: userId)

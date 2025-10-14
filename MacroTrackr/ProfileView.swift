@@ -72,9 +72,12 @@ struct ProfileView: View {
             FriendsView()
         }
         .sheet(isPresented: $showingPrivacySettings) {
-            Text("Privacy Settings")
-                .navigationTitle("Privacy Settings")
-                .navigationBarTitleDisplayMode(.inline)
+            PrivacySettingsView(
+                userProfile: userProfile,
+                onProfileUpdated: {
+                    loadUserProfile()
+                }
+            )
         }
     }
     
@@ -1134,4 +1137,135 @@ struct FriendRequestRowView: View {
     ProfileView()
         .environmentObject(AuthenticationManager())
         .environmentObject(DataManager())
+}
+
+// MARK: - Privacy Settings View
+struct PrivacySettingsView: View {
+    @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var dataManager: DataManager
+    @Environment(\.dismiss) private var dismiss
+    
+    @State private var isPrivate: Bool = false
+    @State private var isLoading = false
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
+    let userProfile: UserProfile?
+    var onProfileUpdated: (() -> Void)? = nil
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Profile Visibility")) {
+                    Toggle("Private Profile", isOn: $isPrivate)
+                        .toggleStyle(SwitchToggleStyle())
+                    
+                    Text("When enabled, your profile, meals, and stats will only be visible to your friends.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Section(header: Text("Data Sharing")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Anonymous Usage Analytics")
+                            .font(.headline)
+                        
+                        Text("Help improve MacroTrackr by sharing anonymous usage data. This data cannot be used to identify you.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Toggle("Enable Analytics", isOn: .constant(false))
+                            .toggleStyle(SwitchToggleStyle())
+                    }
+                }
+                
+                Section(header: Text("Friends & Social")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Friend Requests")
+                            .font(.headline)
+                        
+                        Text("Allow other users to send you friend requests.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Toggle("Allow Friend Requests", isOn: .constant(true))
+                            .toggleStyle(SwitchToggleStyle())
+                    }
+                }
+                
+                Section(header: Text("Account Information")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Profile Information")
+                            .font(.headline)
+                        
+                        Text("Control what information is visible on your profile.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        NavigationLink("Edit Profile") {
+                            Text("Profile editing would be implemented here")
+                                .navigationTitle("Edit Profile")
+                                .navigationBarTitleDisplayMode(.inline)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Privacy Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        savePrivacySettings()
+                    }
+                    .disabled(isLoading)
+                }
+            }
+        }
+        .onAppear {
+            loadCurrentSettings()
+        }
+        .alert("Privacy Settings", isPresented: $showingAlert) {
+            Button("OK") { }
+        } message: {
+            Text(alertMessage)
+        }
+    }
+    
+    private func loadCurrentSettings() {
+        guard let userProfile = userProfile else { return }
+        isPrivate = userProfile.isPrivate
+    }
+    
+    private func savePrivacySettings() {
+        guard let userId = authManager.currentUser?.id else { return }
+        
+        isLoading = true
+        
+        Task {
+            do {
+                try await dataManager.updateUserProfile(
+                    userId: userId.uuidString,
+                    isPrivate: isPrivate
+                )
+                
+                await MainActor.run {
+                    isLoading = false
+                    alertMessage = "Privacy settings updated successfully"
+                    showingAlert = true
+                    onProfileUpdated?()
+                }
+            } catch {
+                await MainActor.run {
+                    isLoading = false
+                    alertMessage = "Failed to update privacy settings: \(error.localizedDescription)"
+                    showingAlert = true
+                }
+            }
+        }
+    }
 }

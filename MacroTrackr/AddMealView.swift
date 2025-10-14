@@ -17,6 +17,8 @@ struct AddMealView: View {
     @State private var ingredients: [String] = [""]
     @State private var cookingInstructions = ""
     @State private var macros = MacroNutrition()
+    @State private var baseMacros = MacroNutrition() // Store the base macros per unit
+    @State private var quantity: Double = 1.0
     @State private var showingImagePicker = false
     @State private var showingFoodScanner = false
     @State private var showingAlert = false
@@ -27,138 +29,14 @@ struct AddMealView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section("Meal Details") {
-                    TextField("Meal Name", text: $mealName)
-                    
-                    Picker("Meal Type", selection: $selectedMealType) {
-                        ForEach(MealType.allCases, id: \.self) { type in
-                            HStack {
-                                Image(systemName: type.icon)
-                                Text(type.displayName)
-                            }
-                            .tag(type)
-                        }
-                    }
-                    .pickerStyle(MenuPickerStyle())
-                }
-                
-                Section("Photo") {
-                    VStack(spacing: 16) {
-                        if let mealImage = mealImage {
-                            Image(uiImage: mealImage)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(height: 200)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(
-                                    Button("Remove") {
-                                        self.mealImage = nil
-                                    }
-                                    .padding(8)
-                                    .background(Color.black.opacity(0.6))
-                                    .foregroundColor(.white)
-                                    .cornerRadius(8),
-                                    alignment: .topTrailing
-                                )
-                        } else {
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(.systemGray5))
-                                .frame(height: 200)
-                                .overlay(
-                                    VStack(spacing: 12) {
-                                        Image(systemName: "camera.fill")
-                                            .font(.system(size: 40))
-                                            .foregroundColor(.secondary)
-                                        Text("Add Photo")
-                                            .font(.headline)
-                                            .foregroundColor(.secondary)
-                                    }
-                                )
-                        }
-                        
-                        HStack(spacing: 16) {
-                            PhotosPicker(selection: $selectedImage, matching: .images) {
-                                Label("Choose Photo", systemImage: "photo")
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.blue)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(10)
-                            }
-                            
-                            Button(action: {
-                                showingFoodScanner = true
-                            }) {
-                                Label("AI Estimator", systemImage: "camera.viewfinder")
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.green)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(10)
-                            }
-                        }
-                    }
-                }
-                .onChange(of: selectedImage) { _, newValue in
-                    Task {
-                        if let data = try? await newValue?.loadTransferable(type: Data.self),
-                           let image = UIImage(data: data) {
-                            await MainActor.run {
-                                self.mealImage = image
-                            }
-                        }
-                    }
-                }
-                
-                Section("Ingredients") {
-                    ForEach(ingredients.indices, id: \.self) { index in
-                        HStack {
-                            TextField("Ingredient \(index + 1)", text: $ingredients[index])
-                            
-                            if ingredients.count > 1 {
-                                Button(action: {
-                                    ingredients.remove(at: index)
-                                }) {
-                                    Image(systemName: "minus.circle.fill")
-                                        .foregroundColor(.red)
-                                }
-                            }
-                        }
-                    }
-                    
-                    Button(action: {
-                        ingredients.append("")
-                    }) {
-                        Label("Add Ingredient", systemImage: "plus.circle")
-                            .foregroundColor(.blue)
-                    }
-                }
-                
-                Section("Cooking Instructions") {
-                    TextEditor(text: $cookingInstructions)
-                        .frame(minHeight: 100)
-                }
-                
-                Section("Nutrition Information") {
-                    MacroInputField(title: "Calories", value: $macros.calories, unit: "kcal")
-                    MacroInputField(title: "Protein", value: $macros.protein, unit: "g")
-                    MacroInputField(title: "Carbohydrates", value: $macros.carbohydrates, unit: "g")
-                    MacroInputField(title: "Fat", value: $macros.fat, unit: "g")
-                    MacroInputField(title: "Sugar", value: $macros.sugar, unit: "g")
-                    MacroInputField(title: "Fiber", value: $macros.fiber, unit: "g")
-                }
-                
-                Section {
-                    Toggle(isOn: $saveAsPreset) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Save as Preset")
-                                .font(.headline)
-                            Text("Add to your saved meals library for quick access later")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
+                mealDetailsSection
+                quantitySection
+                photoSection
+                ingredientsSection
+                cookingInstructionsSection
+                nutritionInputSection
+                totalNutritionSection
+                saveAsPresetSection
             }
             .navigationTitle("Add Meal")
             .navigationBarTitleDisplayMode(.inline)
@@ -192,6 +70,228 @@ struct AddMealView: View {
         } message: {
             Text(alertMessage)
         }
+        .onChange(of: selectedImage) { _, newValue in
+            Task {
+                if let data = try? await newValue?.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    await MainActor.run {
+                        self.mealImage = image
+                    }
+                }
+            }
+        }
+        .onChange(of: quantity) { _, _ in
+            calculateTotalMacros()
+        }
+        .onChange(of: baseMacros) { _, _ in
+            calculateTotalMacros()
+        }
+        .onAppear {
+            calculateTotalMacros()
+        }
+    }
+    
+    // MARK: - Computed Properties for Sections
+    private var mealDetailsSection: some View {
+        Section("Meal Details") {
+            TextField("Meal Name", text: $mealName)
+            
+            Picker("Meal Type", selection: $selectedMealType) {
+                ForEach(MealType.allCases, id: \.self) { type in
+                    HStack {
+                        Image(systemName: type.icon)
+                        Text(type.displayName)
+                    }
+                    .tag(type)
+                }
+            }
+            .pickerStyle(MenuPickerStyle())
+        }
+    }
+    
+    private var quantitySection: some View {
+        Section("Quantity") {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Quantity")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                    Stepper(value: $quantity, in: 0.1...100, step: 0.1) {
+                        Text(String(format: "%.1f", quantity))
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.blue)
+                    }
+                }
+                
+                Text(String(format: "This will multiply all nutrition values by %.1f", quantity))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+    
+    private var photoSection: some View {
+        Section("Photo") {
+            VStack(spacing: 16) {
+                if let mealImage = mealImage {
+                    Image(uiImage: mealImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: 200)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            Button("Remove") {
+                                self.mealImage = nil
+                            }
+                            .padding(8)
+                            .background(Color.black.opacity(0.6))
+                            .foregroundColor(.white)
+                            .cornerRadius(8),
+                            alignment: .topTrailing
+                        )
+                } else {
+                    VStack(spacing: 12) {
+                        PhotosPicker(
+                            selection: $selectedImage,
+                            matching: .images,
+                            photoLibrary: .shared()
+                        ) {
+                            Label("Choose Photo from Library", systemImage: "photo.on.rectangle")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
+                        }
+                        
+                        Button(action: {
+                            showingFoodScanner = true
+                        }) {
+                            Label("Scan Food with AI", systemImage: "camera.viewfinder")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.green)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private var ingredientsSection: some View {
+        Section("Ingredients") {
+            ForEach(ingredients.indices, id: \.self) { index in
+                HStack {
+                    TextField("Ingredient \(index + 1)", text: $ingredients[index])
+                    
+                    if ingredients.count > 1 {
+                        Button(action: {
+                            ingredients.remove(at: index)
+                        }) {
+                            Image(systemName: "minus.circle.fill")
+                                .foregroundColor(.red)
+                        }
+                    }
+                }
+            }
+            
+            Button(action: {
+                ingredients.append("")
+            }) {
+                Label("Add Ingredient", systemImage: "plus.circle")
+                    .foregroundColor(.blue)
+            }
+        }
+    }
+    
+    private var cookingInstructionsSection: some View {
+        Section("Cooking Instructions") {
+            TextEditor(text: $cookingInstructions)
+                .frame(minHeight: 100)
+        }
+    }
+    
+    private var nutritionInputSection: some View {
+        Section("Nutrition Information (per unit)") {
+            MacroInputField(title: "Calories", value: $baseMacros.calories, unit: "kcal")
+            MacroInputField(title: "Protein", value: $baseMacros.protein, unit: "g")
+            MacroInputField(title: "Carbohydrates", value: $baseMacros.carbohydrates, unit: "g")
+            MacroInputField(title: "Fat", value: $baseMacros.fat, unit: "g")
+            MacroInputField(title: "Sugar", value: $baseMacros.sugar, unit: "g")
+            MacroInputField(title: "Fiber", value: $baseMacros.fiber, unit: "g")
+        }
+    }
+    
+    private var totalNutritionSection: some View {
+        Section(String(format: "Total Nutrition (%.1f units)", quantity)) {
+            HStack {
+                Text("Calories")
+                Spacer()
+                Text("\(Int(macros.calories)) kcal")
+                    .fontWeight(.semibold)
+                    .foregroundColor(.orange)
+            }
+            
+            HStack {
+                Text("Protein")
+                Spacer()
+                Text("\(Int(macros.protein)) g")
+                    .fontWeight(.semibold)
+                    .foregroundColor(.red)
+            }
+            
+            HStack {
+                Text("Carbohydrates")
+                Spacer()
+                Text("\(Int(macros.carbohydrates)) g")
+                    .fontWeight(.semibold)
+                    .foregroundColor(.blue)
+            }
+            
+            HStack {
+                Text("Fat")
+                Spacer()
+                Text("\(Int(macros.fat)) g")
+                    .fontWeight(.semibold)
+                    .foregroundColor(.green)
+            }
+            
+            HStack {
+                Text("Sugar")
+                Spacer()
+                Text("\(Int(macros.sugar)) g")
+                    .fontWeight(.semibold)
+                    .foregroundColor(.pink)
+            }
+            
+            HStack {
+                Text("Fiber")
+                Spacer()
+                Text("\(Int(macros.fiber)) g")
+                    .fontWeight(.semibold)
+                    .foregroundColor(.brown)
+            }
+        }
+    }
+    
+    private var saveAsPresetSection: some View {
+        Section {
+            Toggle(isOn: $saveAsPreset) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Save as Preset")
+                        .font(.headline)
+                    Text("Add to your saved meals library for quick access later")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
     }
     
     private func resetForm() {
@@ -201,7 +301,20 @@ struct AddMealView: View {
         selectedImage = nil
         ingredients = [""]
         cookingInstructions = ""
+        baseMacros = MacroNutrition()
+        quantity = 1.0
         macros = MacroNutrition()
+    }
+    
+    private func calculateTotalMacros() {
+        macros = MacroNutrition(
+            calories: baseMacros.calories * quantity,
+            protein: baseMacros.protein * quantity,
+            carbohydrates: baseMacros.carbohydrates * quantity,
+            fat: baseMacros.fat * quantity,
+            sugar: baseMacros.sugar * quantity,
+            fiber: baseMacros.fiber * quantity
+        )
     }
     
     private func saveMeal() async {
@@ -217,10 +330,12 @@ struct AddMealView: View {
             }
             
                 // Always add to daily meals log
+                let displayName = quantity == 1.0 ? mealName : String(format: "%.1f × %@", quantity, mealName)
+                
                 let meal = Meal(
                     id: UUID().uuidString,
                     userId: userId.uuidString,
-                    name: mealName,
+                    name: displayName,
                     imageURL: imageURL,
                     ingredients: ingredients.filter { !$0.isEmpty },
                     cookingInstructions: cookingInstructions.isEmpty ? nil : cookingInstructions,
@@ -237,14 +352,14 @@ struct AddMealView: View {
             }
             
             await MainActor.run {
-                resetForm()
                 isLoading = false
+                resetForm()
             }
         } catch {
             await MainActor.run {
+                isLoading = false
                 alertMessage = error.localizedDescription
                 showingAlert = true
-                isLoading = false
             }
         }
     }
@@ -266,7 +381,9 @@ struct AddMealView: View {
         if mealName.isEmpty {
             mealName = result.foodName
         }
-        macros = result.estimatedNutrition
+        baseMacros = result.estimatedNutrition
+        quantity = 1.0 // Reset to 1 unit when applying scan result
+        calculateTotalMacros()
     }
 }
 
@@ -300,325 +417,113 @@ struct FoodScannerView: View {
     let onScanComplete: (FoodScanResult?) -> Void
     @State private var isScanning = false
     @State private var scanResult: FoodScanResult?
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
     
     var body: some View {
         NavigationView {
-            VStack {
+            VStack(spacing: 20) {
                 if isScanning {
-                    CameraView { result in
-                        scanResult = result
-                        isScanning = false
-                    }
+                    Text("Scanning food...")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    
+                    ProgressView()
+                        .scaleEffect(1.5)
                 } else {
                     VStack(spacing: 20) {
                         Image(systemName: "camera.viewfinder")
-                            .font(.system(size: 80))
-                            .foregroundColor(.blue)
+                            .font(.system(size: 60))
+                            .foregroundColor(.green)
                         
-                        Text("Food Scanner")
-                            .font(.largeTitle)
+                        Text("AI Food Scanner")
+                            .font(.title)
                             .fontWeight(.bold)
                         
-                        Text("Point your camera at food to automatically detect and estimate nutrition information")
+                        Text("This feature will analyze your food and estimate nutritional values")
                             .font(.body)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
                         
                         Button("Start Scanning") {
-                            isScanning = true
+                            startScanning()
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
                     }
-                    .padding()
                 }
                 
                 if let result = scanResult {
-                    ScanResultView(result: result) {
-                        onScanComplete(result)
-                        dismiss()
-                    } onCancel: {
-                        onScanComplete(nil)
-                        dismiss()
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Scan Result:")
+                            .font(.headline)
+                        
+                        Text("Food: \(result.foodName)")
+                            .font(.subheadline)
+                        
+                        Text("Estimated Calories: \(Int(result.estimatedNutrition.calories))")
+                            .font(.subheadline)
+                        
+                        Text("Estimated Protein: \(Int(result.estimatedNutrition.protein))g")
+                            .font(.subheadline)
                     }
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
                 }
+                
+                Spacer()
             }
+            .padding()
             .navigationTitle("Scan Food")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
-                        onScanComplete(nil)
                         dismiss()
                     }
                 }
-            }
-        }
-    }
-}
-
-// MARK: - Camera View
-struct CameraView: View {
-    let onResult: (FoodScanResult) -> Void
-    @StateObject private var cameraManager = CameraManager()
-    
-    var body: some View {
-        ZStack {
-            // Camera preview
-            CameraPreviewView(session: cameraManager.session)
-                .ignoresSafeArea()
-            
-            // Overlay with scanning UI
-            VStack {
-                Spacer()
                 
-                VStack(spacing: 20) {
-                    Text("Point camera at food")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .padding()
-                        .background(Color.black.opacity(0.6))
-                        .cornerRadius(10)
-                    
-                    HStack(spacing: 20) {
-                        Button("Capture & Analyze") {
-                            captureAndAnalyze()
+                if scanResult != nil {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Use Result") {
+                            onScanComplete(scanResult)
+                            dismiss()
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        
-                        Button("Simulate") {
-                            simulateScan()
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
                     }
                 }
-                .padding()
             }
         }
-        .onAppear {
-            cameraManager.requestPermission()
+        .alert("Error", isPresented: $showingAlert) {
+            Button("OK") { }
+        } message: {
+            Text(alertMessage)
         }
     }
     
-    private func captureAndAnalyze() {
-        cameraManager.capturePhoto { image in
-            if let image = image {
-                analyzeFood(image: image)
-            }
-        }
-    }
-    
-    private func simulateScan() {
-        // Simulate a scan result with random food
-        let foods = [
-            ("Chicken Breast", MacroNutrition(calories: 165, protein: 31, carbohydrates: 0, fat: 3.6, sugar: 0, fiber: 0)),
-            ("Apple", MacroNutrition(calories: 95, protein: 0.5, carbohydrates: 25, fat: 0.3, sugar: 19, fiber: 4)),
-            ("Salmon", MacroNutrition(calories: 206, protein: 22, carbohydrates: 0, fat: 12, sugar: 0, fiber: 0)),
-            ("Rice", MacroNutrition(calories: 130, protein: 2.7, carbohydrates: 28, fat: 0.3, sugar: 0, fiber: 0.4)),
-            ("Broccoli", MacroNutrition(calories: 55, protein: 4.3, carbohydrates: 11, fat: 0.6, sugar: 2.6, fiber: 5.1))
-        ]
+    private func startScanning() {
+        isScanning = true
         
-        let randomFood = foods.randomElement()!
-        let mockResult = FoodScanResult(
-            foodName: randomFood.0,
-            confidence: Double.random(in: 0.7...0.95),
-            estimatedNutrition: randomFood.1
-        )
-        onResult(mockResult)
-    }
-    
-    private func analyzeFood(image: UIImage) {
-        // In a real implementation, this would use Vision framework
-        // For now, we'll simulate with a delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+        // Simulate scanning process
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            // Mock scan result - in real implementation, this would use Vision framework
             let mockResult = FoodScanResult(
-                foodName: "Detected Food",
-                confidence: 0.82,
-                estimatedNutrition: MacroNutrition(calories: 200, protein: 15, carbohydrates: 30, fat: 8, sugar: 5, fiber: 3)
+                foodName: "Grilled Chicken Breast",
+                confidence: 0.85,
+                estimatedNutrition: MacroNutrition(
+                    calories: 231,
+                    protein: 43.5,
+                    carbohydrates: 0,
+                    fat: 5.0,
+                    sugar: 0,
+                    fiber: 0
+                ),
+                imageData: nil
             )
-            onResult(mockResult)
-        }
-    }
-}
-
-// MARK: - Camera Manager
-class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
-    let session = AVCaptureSession()
-    private var photoOutput = AVCapturePhotoOutput()
-    private var isSessionRunning = false
-    private var photoCompletion: ((UIImage?) -> Void)?
-    
-    // ObservableObject requirement
-    @Published var isSessionActive = false
-    
-    override init() {
-        super.init()
-        setupCamera()
-    }
-    
-    private func setupCamera() {
-        session.beginConfiguration()
-        
-        guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
-              let videoDeviceInput = try? AVCaptureDeviceInput(device: videoDevice),
-              session.canAddInput(videoDeviceInput) else {
-            session.commitConfiguration()
-            return
-        }
-        
-        session.addInput(videoDeviceInput)
-        
-        if session.canAddOutput(photoOutput) {
-            session.addOutput(photoOutput)
-        }
-        
-        session.commitConfiguration()
-    }
-    
-    func requestPermission() {
-        AVCaptureDevice.requestAccess(for: .video) { granted in
-            DispatchQueue.main.async {
-                if granted {
-                    self.startSession()
-                }
-            }
-        }
-    }
-    
-    func startSession() {
-        guard !isSessionRunning else { return }
-        
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.session.startRunning()
-            self.isSessionRunning = true
-            DispatchQueue.main.async {
-                self.isSessionActive = true
-            }
-        }
-    }
-    
-    func stopSession() {
-        guard isSessionRunning else { return }
-        
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.session.stopRunning()
-            self.isSessionRunning = false
-            DispatchQueue.main.async {
-                self.isSessionActive = false
-            }
-        }
-    }
-    
-    func capturePhoto(completion: @escaping (UIImage?) -> Void) {
-        photoCompletion = completion
-        let settings = AVCapturePhotoSettings()
-        photoOutput.capturePhoto(with: settings, delegate: self)
-    }
-    
-    // MARK: - AVCapturePhotoCaptureDelegate
-    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        guard let completion = photoCompletion else { return }
-        
-        if let error = error {
-            print("Error capturing photo: \(error)")
-            completion(nil)
-            return
-        }
-        
-        guard let imageData = photo.fileDataRepresentation(),
-              let image = UIImage(data: imageData) else {
-            completion(nil)
-            return
-        }
-        
-        completion(image)
-        photoCompletion = nil
-    }
-}
-
-// MARK: - Camera Preview View
-struct CameraPreviewView: UIViewRepresentable {
-    let session: AVCaptureSession
-    
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        
-        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
-        previewLayer.videoGravity = .resizeAspectFill
-        
-        view.layer.addSublayer(previewLayer)
-        
-        return view
-    }
-    
-    func updateUIView(_ uiView: UIView, context: Context) {
-        // Update frame when view size changes
-        if let previewLayer = uiView.layer.sublayers?.first as? AVCaptureVideoPreviewLayer {
-            previewLayer.frame = uiView.bounds
-        }
-    }
-}
-
-// MARK: - Scan Result View
-struct ScanResultView: View {
-    let result: FoodScanResult
-    let onAccept: () -> Void
-    let onCancel: () -> Void
-    
-    var body: some View {
-        VStack(spacing: 20) {
-            Text("Scan Results")
-                .font(.title2)
-                .fontWeight(.bold)
             
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(result.foodName)
-                        .font(.headline)
-                    Spacer()
-                    Text("\(Int(result.confidence * 100))% confidence")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                Text("Estimated nutrition")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                HStack(spacing: 12) {
-                    MacroBadge(label: "Calories", value: "\(Int(result.estimatedNutrition.calories))", color: .orange)
-                    MacroBadge(label: "Protein", value: "\(Int(result.estimatedNutrition.protein))g", color: .red)
-                    MacroBadge(label: "Carbs", value: "\(Int(result.estimatedNutrition.carbohydrates))g", color: .blue)
-                    MacroBadge(label: "Fat", value: "\(Int(result.estimatedNutrition.fat))g", color: .green)
-                }
-            }
-            .padding()
-            .background(Color(.systemGray6))
-            .cornerRadius(12)
-            
-            HStack(spacing: 16) {
-                Button("Cancel") {
-                    onCancel()
-                }
-                .buttonStyle(.bordered)
-                .frame(maxWidth: .infinity)
-                
-                Button("Use This Data") {
-                    onAccept()
-                }
-                .buttonStyle(.borderedProminent)
-                .frame(maxWidth: .infinity)
-            }
+            isScanning = false
+            scanResult = mockResult
         }
-        .padding()
     }
-}
-
-#Preview {
-            AddMealView(selectedDate: nil)
-        .environmentObject(DataManager())
-        .environmentObject(AuthenticationManager())
 }
