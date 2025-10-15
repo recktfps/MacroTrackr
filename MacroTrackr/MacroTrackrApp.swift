@@ -25,17 +25,23 @@ struct MacroTrackrApp: SwiftUI.App {
                     .environmentObject(authManager)
                     .environmentObject(dataManager)
                     .environmentObject(notificationManager)
+                    .onAppear {
+                        authManager.checkAuthStatus()
+                    }
             } else {
                 AuthenticationView()
                     .environmentObject(authManager)
                     .environmentObject(notificationManager)
+                    .onAppear {
+                        authManager.checkAuthStatus()
+                    }
             }
         }
     }
     
     init() {
         // Check authentication status when app launches
-        authManager.checkAuthStatus()
+        // This will be handled when the view appears
     }
 }
 
@@ -934,7 +940,11 @@ class DataManager: ObservableObject {
                 filter: "from_user_id=eq.\(userId)"
             )
             
-            await channel.subscribeWithError()
+            do {
+                try await channel.subscribeWithError()
+            } catch {
+                print("Failed to subscribe to friend requests: \(error)")
+            }
             
             for await _ in insertions {
                 print("New friend request received!")
@@ -959,7 +969,11 @@ class DataManager: ObservableObject {
                 filter: "user_id=eq.\(userId)"
             )
             
-            await channel.subscribeWithError()
+            do {
+                try await channel.subscribeWithError()
+            } catch {
+                print("Failed to subscribe to meals: \(error)")
+            }
             
             for await _ in changes {
                 print("Meals updated - reloading...")
