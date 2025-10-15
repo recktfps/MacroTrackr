@@ -32,6 +32,13 @@ struct MacroTrackrApp: SwiftUI.App {
             }
         }
     }
+    
+    init() {
+        // Check authentication status when app launches
+        Task {
+            await authManager.checkAuthStatus()
+        }
+    }
 }
 
 // MARK: - Authentication Manager
@@ -320,16 +327,20 @@ class DataManager: ObservableObject {
     }
     
     func loadTodayMeals(for userId: String) async {
-        let today = Calendar.current.startOfDay(for: Date())
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
+        await loadMealsForDate(userId: userId, date: Date())
+    }
+    
+    func loadMealsForDate(userId: String, date: Date) async {
+        let startOfDay = Calendar.current.startOfDay(for: date)
+        let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)!
         
         do {
             let meals: [Meal] = try await supabase
                 .from("meals")
                 .select()
                 .eq("user_id", value: userId)
-                .gte("created_at", value: today)
-                .lt("created_at", value: tomorrow)
+                .gte("created_at", value: startOfDay)
+                .lt("created_at", value: endOfDay)
                 .execute()
                 .value
             
@@ -337,7 +348,7 @@ class DataManager: ObservableObject {
                 self.todayMeals = meals
             }
         } catch {
-            print("Error loading today's meals: \(error)")
+            print("Error loading meals for date: \(error)")
         }
     }
     
@@ -915,17 +926,17 @@ class DataManager: ObservableObject {
                 InsertAction.self,
                 schema: "public",
                 table: "friend_requests",
-                filter: "to_user_id=eq.\(userId)"
+                filter: PostgresFilter(column: "to_user_id", value: userId)
             )
             
             let updates = channel.postgresChange(
                 UpdateAction.self,
                 schema: "public",
                 table: "friend_requests",
-                filter: "from_user_id=eq.\(userId)"
+                filter: PostgresFilter(column: "from_user_id", value: userId)
             )
             
-            await channel.subscribe()
+            await channel.subscribeWithError()
             
             for await _ in insertions {
                 print("New friend request received!")
@@ -947,10 +958,10 @@ class DataManager: ObservableObject {
                 AnyAction.self,
                 schema: "public",
                 table: "meals",
-                filter: "user_id=eq.\(userId)"
+                filter: PostgresFilter(column: "user_id", value: userId)
             )
             
-            await channel.subscribe()
+            await channel.subscribeWithError()
             
             for await _ in changes {
                 print("Meals updated - reloading...")

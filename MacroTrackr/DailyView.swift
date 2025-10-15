@@ -64,7 +64,7 @@ struct DailyView: View {
         isLoading = true
         
         Task {
-            await dataManager.loadTodayMeals(for: userId.uuidString)
+            await dataManager.loadMealsForDate(userId: userId.uuidString, date: selectedDate)
             await loadUserGoals(userId: userId.uuidString)
             await calculateDailyProgress()
             
@@ -411,12 +411,13 @@ struct MealRowView: View {
                     .font(.headline)
                     .lineLimit(1)
                 
-                HStack(spacing: 8) {
+                HStack(spacing: 2) {
                     MacroBadge(label: "Cal", value: "\(Int(meal.macros.calories))", color: .orange)
                     MacroBadge(label: "P", value: "\(Int(meal.macros.protein))g", color: .red)
                     MacroBadge(label: "C", value: "\(Int(meal.macros.carbohydrates))g", color: .blue)
                     MacroBadge(label: "F", value: "\(Int(meal.macros.fat))g", color: .green)
                 }
+                .fixedSize(horizontal: false, vertical: true)
             }
             
             Spacer()
@@ -463,17 +464,18 @@ struct MacroBadge: View {
     var body: some View {
         HStack(spacing: 2) {
             Text(label)
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 8, weight: .medium))
                 .foregroundColor(color)
             
             Text(value)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 8, weight: .semibold))
                 .foregroundColor(.primary)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
+        .padding(.horizontal, 3)
+        .padding(.vertical, 1)
         .background(color.opacity(0.1))
-        .cornerRadius(4)
+        .cornerRadius(2)
+        .fixedSize()
     }
 }
 

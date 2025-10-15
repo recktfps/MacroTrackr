@@ -189,12 +189,25 @@ struct SearchView: View {
         }
         .onChange(of: searchText) { _, newValue in
             if newValue.isEmpty {
-                searchResults = []
+                searchResults = dataManager.savedMeals
             }
         }
         .onChange(of: selectedFilter) { _, _ in
             if !searchText.isEmpty {
                 performSearch()
+            }
+        }
+        .onAppear {
+            // Load saved meals when view appears
+            if let userId = authManager.currentUser?.id.uuidString {
+                Task {
+                    await dataManager.loadSavedMeals(for: userId)
+                    await MainActor.run {
+                        if searchText.isEmpty {
+                            searchResults = dataManager.savedMeals
+                        }
+                    }
+                }
             }
         }
     }

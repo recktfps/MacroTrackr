@@ -51,7 +51,10 @@ struct AddMealView: View {
                     Button("Save") {
                         Task {
                             await saveMeal()
-                            dismiss()
+                            // Dismiss the view after successful save
+                            await MainActor.run {
+                                dismiss()
+                            }
                         }
                     }
                     .disabled(mealName.isEmpty || isLoading)
@@ -118,15 +121,15 @@ struct AddMealView: View {
                     
                     Spacer()
                     
-                    Stepper(value: $quantity, in: 0.1...100, step: 0.1) {
-                        Text(String(format: "%.1f", quantity))
+                    Stepper(value: $quantity, in: 1...100, step: 1) {
+                        Text(String(format: "%.0f", quantity))
                             .font(.headline)
                             .fontWeight(.semibold)
                             .foregroundColor(.blue)
                     }
                 }
                 
-                Text(String(format: "This will multiply all nutrition values by %.1f", quantity))
+                Text(String(format: "This will multiply all nutrition values by %.0f", quantity))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -167,6 +170,7 @@ struct AddMealView: View {
                                 .foregroundColor(.white)
                                 .cornerRadius(10)
                         }
+                        .buttonStyle(PlainButtonStyle())
                         
                         Button(action: {
                             showingFoodScanner = true
@@ -229,7 +233,7 @@ struct AddMealView: View {
     }
     
     private var totalNutritionSection: some View {
-        Section(String(format: "Total Nutrition (%.1f units)", quantity)) {
+        Section(String(format: "Total Nutrition (%.0f units)", quantity)) {
             HStack {
                 Text("Calories")
                 Spacer()
