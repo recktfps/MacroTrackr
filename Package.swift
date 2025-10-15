@@ -4,7 +4,8 @@ import PackageDescription
 let package = Package(
     name: "MacroTrackr",
     platforms: [
-        .iOS(.v17)
+        .iOS(.v17),
+        .macOS(.v14)
     ],
     products: [
         .library(
@@ -13,7 +14,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/supabase/supabase-swift", from: "2.0.0"),
-        .package(url: "https://github.com/realm/realm-swift", from: "10.0.0"),
+        .package(url: "https://github.com/realm/realm-swift", from: "10.50.0"),
         .package(url: "https://github.com/onevcat/Kingfisher", from: "7.0.0")
     ],
     targets: [
