@@ -35,9 +35,7 @@ struct MacroTrackrApp: SwiftUI.App {
     
     init() {
         // Check authentication status when app launches
-        Task {
-            await authManager.checkAuthStatus()
-        }
+        authManager.checkAuthStatus()
     }
 }
 
@@ -926,14 +924,14 @@ class DataManager: ObservableObject {
                 InsertAction.self,
                 schema: "public",
                 table: "friend_requests",
-                filter: PostgresFilter(column: "to_user_id", value: userId)
+                filter: "to_user_id=eq.\(userId)"
             )
             
             let updates = channel.postgresChange(
                 UpdateAction.self,
                 schema: "public",
                 table: "friend_requests",
-                filter: PostgresFilter(column: "from_user_id", value: userId)
+                filter: "from_user_id=eq.\(userId)"
             )
             
             await channel.subscribeWithError()
@@ -958,7 +956,7 @@ class DataManager: ObservableObject {
                 AnyAction.self,
                 schema: "public",
                 table: "meals",
-                filter: PostgresFilter(column: "user_id", value: userId)
+                filter: "user_id=eq.\(userId)"
             )
             
             await channel.subscribeWithError()
