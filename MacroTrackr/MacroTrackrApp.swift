@@ -621,7 +621,7 @@ class DataManager: ObservableObject {
                 .execute()
                 .value
             
-            guard let request = requests.first else { return }
+            guard requests.first != nil else { return }
             
             // Create friendship using the database trigger instead of direct insert
             // The handle_accepted_friend_request trigger will create the friendship
@@ -909,16 +909,16 @@ class DataManager: ObservableObject {
     // MARK: - Realtime Subscriptions
     func subscribeToFriendRequests(userId: String) {
         friendRequestsSubscription = Task {
-            let channel = await supabase.channel("friend_requests_\(userId)")
+            let channel = supabase.channel("friend_requests_\(userId)")
             
-            let insertions = await channel.postgresChange(
+            let insertions = channel.postgresChange(
                 InsertAction.self,
                 schema: "public",
                 table: "friend_requests",
                 filter: "to_user_id=eq.\(userId)"
             )
             
-            let updates = await channel.postgresChange(
+            let updates = channel.postgresChange(
                 UpdateAction.self,
                 schema: "public",
                 table: "friend_requests",
@@ -927,12 +927,12 @@ class DataManager: ObservableObject {
             
             await channel.subscribe()
             
-            for await change in insertions {
+            for await _ in insertions {
                 print("New friend request received!")
                 await loadFriendRequests(for: userId)
             }
             
-            for await change in updates {
+            for await _ in updates {
                 print("Friend request updated!")
                 await loadFriendRequests(for: userId)
             }
@@ -941,9 +941,9 @@ class DataManager: ObservableObject {
     
     func subscribeToMeals(userId: String) {
         mealsSubscription = Task {
-            let channel = await supabase.channel("meals_\(userId)")
+            let channel = supabase.channel("meals_\(userId)")
             
-            let changes = await channel.postgresChange(
+            let changes = channel.postgresChange(
                 AnyAction.self,
                 schema: "public",
                 table: "meals",

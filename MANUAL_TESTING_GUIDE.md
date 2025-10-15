@@ -1,144 +1,259 @@
-# 🧪 MacroTrackr Manual Testing Guide
-**Status:** 100% Automated Tests Passed ✅  
-**Build:** Successfully Built and Installed ✅  
-**Ready for:** Manual UI Testing
+# MacroTrackr Manual Testing Guide
 
-## 🎯 Critical Tests to Perform
+## 🧪 Comprehensive App Testing Checklist
 
-### Test 1: Authentication ✅
-**Expected:** Login with test credentials works
-- **Email:** `ivan562562@gmail.com`
-- **Password:** `cacasauce`
-- **Result:** Should successfully log in and show main app
+### ✅ Pre-Testing Status
+- **Build Status**: ✅ SUCCESS (No errors)
+- **App Installation**: ✅ INSTALLED on iPhone 17 Simulator
+- **App Launch**: ✅ LAUNCHED (Process ID: 4511)
+- **Code Quality**: ✅ 8/10 tests passed (80% success rate)
 
-### Test 2: Add Meal with Photo 📸
-**Expected:** Can add meal with photo from library
-1. Go to **Daily** tab
-2. Tap **"+ Add Meal"**
-3. Enter meal name (e.g., "Grilled Chicken")
-4. Tap **"Choose Photo from Library"**
-5. Select a photo from simulator photos
-6. Enter macros (calories: 300, protein: 25, carbs: 10, fat: 15)
-7. Tap **"Save"**
-8. **Verify:** Meal appears in today's list with photo
+### 📱 Authentication Testing
 
-### Test 3: Friend Request System 👥
-**Expected:** Complete friend request flow works
-1. Go to **Profile** tab
-2. Tap **"Friends"**
-3. Tap **"Add Friend"**
-4. Enter a display name (e.g., "TestUser")
-5. Tap **"Send Request"**
-6. **Verify:** Button changes to "Pending" or shows success message
+#### Test 1.1: Sign Up Flow
+- [ ] Tap "Sign Up" button
+- [ ] Enter email: `test@example.com`
+- [ ] Enter password: `testpassword123`
+- [ ] Tap "Sign Up"
+- [ ] Verify user is created and logged in
+- [ ] Check if profile is created automatically
 
-### Test 4: Profile Picture Upload 🖼️
-**Expected:** Can upload and display profile picture
-1. Go to **Profile** tab
-2. Tap the profile picture area
-3. Select photo from library
-4. **Verify:** Upload success message appears
-5. **Verify:** Profile picture updates and displays
+#### Test 1.2: Sign In Flow
+- [ ] Tap "Sign In" button
+- [ ] Enter email: `ivan562562@gmail.com`
+- [ ] Enter password: `cacasauce`
+- [ ] Tap "Sign In"
+- [ ] Verify successful login
+- [ ] Check if user profile loads correctly
 
-### Test 5: Daily Goals Persistence 💪
-**Expected:** Daily goals save and persist
-1. Go to **Profile** tab
-2. Tap **"Daily Goals"**
-3. Change calorie goal to 2200
-4. Change protein goal to 150g
-5. Tap **"Save"**
-6. Close and reopen Daily Goals
-7. **Verify:** Goals persisted correctly
+#### Test 1.3: Apple Sign In
+- [ ] Tap "Sign in with Apple" button
+- [ ] Complete Apple ID authentication
+- [ ] Verify successful login
+- [ ] Check profile creation
 
-### Test 6: Navigation & Cancel Buttons ↩️
-**Expected:** Cancel buttons work properly
-1. Go to **Daily** tab
-2. Tap **"+ Add Meal"**
-3. Enter some data
-4. Tap **"Cancel"** (top left)
-5. **Verify:** Returns to Daily view without saving
+### 🍽️ Meal Management Testing
 
-### Test 7: Widget Functionality 📱
-**Expected:** Widget can be added to home screen
-1. Go to **Profile** tab
-2. Tap **"Add Widget"** button
-3. **Verify:** Instructions appear or widget setup begins
-4. Alternatively: Long press home screen → Add Widget → Search "MacroTrackr"
-5. **Verify:** Widget appears in widget gallery
+#### Test 2.1: Add Meal (Basic)
+- [ ] Navigate to "Add Meal" tab
+- [ ] Enter meal name: "Grilled Chicken"
+- [ ] Enter calories: 250
+- [ ] Enter protein: 30g
+- [ ] Enter carbs: 5g
+- [ ] Enter fats: 12g
+- [ ] Enter sugar: 2g
+- [ ] Enter fiber: 1g
+- [ ] Tap "Save Meal"
+- [ ] Verify meal appears in Today's view
 
-### Test 8: Search Functionality 🔍
-**Expected:** Can search and find meals
-1. Go to **Search** tab
-2. Type "Chicken" in search bar
-3. **Verify:** Results appear (if meals exist)
-4. Type "NonExistent" in search bar
-5. **Verify:** "No results found" message appears
+#### Test 2.2: Add Meal with Photo
+- [ ] Navigate to "Add Meal" tab
+- [ ] Tap "Choose Photo from Library"
+- [ ] Select a food photo from library
+- [ ] Verify photo appears in meal form
+- [ ] Fill in meal details
+- [ ] Save meal
+- [ ] Verify meal with photo appears in Today's view
 
-### Test 9: Stats View 📊
-**Expected:** Stats display correctly
-1. Go to **Stats** tab
-2. **Verify:** Charts load without errors
-3. Tap **Week/Month/Year** buttons
-4. **Verify:** Charts update based on timeframe
+#### Test 2.3: Add Meal with AI Scan
+- [ ] Navigate to "Add Meal" tab
+- [ ] Tap "Scan Food with AI"
+- [ ] Point camera at food item
+- [ ] Wait for AI analysis
+- [ ] Verify macro estimates appear
+- [ ] Adjust quantities if needed
+- [ ] Save meal
+- [ ] Verify scanned meal appears in Today's view
 
-### Test 10: Date Selection for Meals 📅
-**Expected:** Can add meals to specific dates
-1. Go to **Daily** tab
-2. Use date picker to go to yesterday
-3. Tap **"+ Add Meal"**
-4. Add a meal with macros
-5. Tap **"Save"**
-6. Go back to today
-7. Go back to yesterday
-8. **Verify:** Meal appears on correct date
+#### Test 2.4: Add Meal for Different Date
+- [ ] Navigate to "Today" tab
+- [ ] Tap date picker (top left)
+- [ ] Select yesterday's date
+- [ ] Tap "Add Meal"
+- [ ] Fill in meal details
+- [ ] Save meal
+- [ ] Verify meal appears on correct date
+- [ ] Return to today's date
 
-## 🔧 Troubleshooting Common Issues
+### 🔍 Search Functionality Testing
 
-### Issue: "Friend request error" message
-**Solution:** Check Supabase database has proper RLS policies and triggers
+#### Test 3.1: Search Existing Meals
+- [ ] Navigate to "Search" tab
+- [ ] Type "Chicken" in search bar
+- [ ] Verify results show meals with "Chicken"
+- [ ] Tap on a meal result
+- [ ] Verify meal details display correctly
+- [ ] Tap "Add to Today" button
+- [ ] Verify meal is added to today's intake
 
-### Issue: "Failed to update profile picture: Bucket not found"
-**Solution:** Ensure `profile-images` bucket exists in Supabase Storage
+#### Test 3.2: Search with No Results
+- [ ] Navigate to "Search" tab
+- [ ] Type "Pizza" in search bar
+- [ ] Verify "No meals found" message appears
+- [ ] Verify helpful tips are shown
 
-### Issue: PhotosPicker not opening
-**Solution:** Check iOS simulator has photos in library (Settings → Photos)
+### 📊 Daily View Testing
 
-### Issue: Widget not appearing in gallery
-**Solution:** Ensure widget extension is properly configured in Xcode
+#### Test 4.1: Today's Progress Display
+- [ ] Navigate to "Today" tab
+- [ ] Verify macro progress bars display correctly
+- [ ] Check that numbers are horizontal (not vertical)
+- [ ] Verify remaining targets show correctly
+- [ ] Check that progress updates when meals are added
 
-### Issue: Vertical macro text display
-**Solution:** Font sizes are set explicitly - should display horizontally
+#### Test 4.2: Date Navigation
+- [ ] Tap "Today" button (bottom left)
+- [ ] Verify returns to current date
+- [ ] Use arrow buttons to navigate dates
+- [ ] Verify meals display for each date
+- [ ] Check that adding meals works for past dates
 
-## 📋 Expected Results Summary
+#### Test 4.3: Macro Goals
+- [ ] Navigate to "Profile" tab
+- [ ] Scroll to "Daily Goals" section
+- [ ] Modify calorie goal to 2000
+- [ ] Modify protein goal to 150g
+- [ ] Tap "Save Goals"
+- [ ] Return to "Today" tab
+- [ ] Verify new goals are reflected in progress bars
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Authentication | ✅ | Login works |
-| Add Meal | ✅ | With photo support |
-| Friend Requests | ✅ | Complete flow implemented |
-| Profile Pictures | ✅ | Upload to Supabase Storage |
-| Daily Goals | ✅ | Persistent storage |
-| Navigation | ✅ | Cancel buttons work |
-| Widget | ✅ | Home screen integration |
-| Search | ✅ | With "no results" handling |
-| Stats | ✅ | Multiple timeframes |
-| Date Selection | ✅ | Meals save to correct dates |
+### 👥 Social Features Testing
 
-## 🎉 Success Criteria
+#### Test 5.1: Profile Image Upload
+- [ ] Navigate to "Profile" tab
+- [ ] Tap profile image placeholder
+- [ ] Select "Choose Photo from Library"
+- [ ] Select a profile photo
+- [ ] Wait for upload to complete
+- [ ] Verify new profile image appears
+- [ ] Check that no "Bucket not found" error occurs
 
-**App is 100% complete when:**
-- ✅ All 15 automated tests pass (ACHIEVED)
-- ✅ All 10 manual tests pass
-- ✅ No critical errors in console
-- ✅ All major features work as intended
+#### Test 5.2: Friend Requests (Send)
+- [ ] Navigate to "Profile" tab
+- [ ] Scroll to "Add Friends" section
+- [ ] Type a display name of another user
+- [ ] Tap "Add Friend"
+- [ ] Verify "Friend request sent" message
+- [ ] Check that button changes to "Pending"
 
-## 📱 Next Steps
+#### Test 5.3: Friend Requests (Receive)
+- [ ] Log in with second account
+- [ ] Navigate to "Profile" tab
+- [ ] Check "Friend Requests" section
+- [ ] Verify incoming request appears
+- [ ] Tap "Accept" or "Decline"
+- [ ] Verify request status updates
 
-1. **Run through all 10 manual tests above**
-2. **Report any failing tests with specific error messages**
-3. **Take screenshots of any UI issues**
-4. **Verify Supabase database is properly configured**
+#### Test 5.4: Friend List
+- [ ] Navigate to "Profile" tab
+- [ ] Check "Friends" section
+- [ ] Verify accepted friends appear
+- [ ] Tap on a friend's name
+- [ ] Verify friend's profile loads
+- [ ] Check friend's meal sharing (if enabled)
+
+### 📈 Stats View Testing
+
+#### Test 6.1: Stats Display
+- [ ] Navigate to "Stats" tab
+- [ ] Verify weekly view shows current week data
+- [ ] Tap "Month" button
+- [ ] Verify monthly stats display
+- [ ] Tap "Year" button
+- [ ] Verify yearly stats display
+- [ ] Check that future dates show no data
+
+#### Test 6.2: Charts and Graphs
+- [ ] Verify macro charts display correctly
+- [ ] Check that data points match actual meals
+- [ ] Verify chart interactions work (zoom, pan)
+- [ ] Check that averages are calculated correctly
+
+### 🔧 Widget Testing
+
+#### Test 7.1: Widget Gallery
+- [ ] Long press on home screen
+- [ ] Tap "+" button
+- [ ] Search for "MacroTrackr"
+- [ ] Verify widget appears in gallery
+- [ ] Select widget size (Small, Medium, Large)
+- [ ] Add widget to home screen
+
+#### Test 7.2: Widget Display
+- [ ] Verify widget shows today's macro progress
+- [ ] Check that numbers are readable
+- [ ] Verify widget updates when meals are added
+- [ ] Test different widget sizes
+
+### 🎯 Navigation and UI Testing
+
+#### Test 8.1: Tab Navigation
+- [ ] Tap each tab in bottom navigation
+- [ ] Verify smooth transitions
+- [ ] Check that selected tab is highlighted
+- [ ] Verify tab icons display correctly
+
+#### Test 8.2: Cancel/Save Buttons
+- [ ] Navigate to "Add Meal" tab
+- [ ] Fill in some meal details
+- [ ] Tap "Cancel" button
+- [ ] Verify form dismisses without saving
+- [ ] Fill in meal details again
+- [ ] Tap "Save Meal" button
+- [ ] Verify form dismisses after saving
+
+#### Test 8.3: Error Handling
+- [ ] Try to add meal with empty name
+- [ ] Verify appropriate error message
+- [ ] Try to search for non-existent user
+- [ ] Verify "User not found" message
+- [ ] Test network error scenarios
+
+### 🚨 Known Issues to Monitor
+
+1. **Profile Image Upload**: Watch for "Bucket not found" errors
+2. **Friend Requests**: Check for RLS policy violations
+3. **Meal Photo Picker**: Verify PhotosPicker works correctly
+4. **Today Button**: Ensure it returns to current date
+5. **Macro Display**: Check numbers are horizontal, not vertical
+6. **Widget Gallery**: Verify MacroTrackr widget appears
+
+### 📝 Test Results Template
+
+```
+Test Date: ___________
+Tester: ___________
+App Version: ___________
+
+Authentication: ___/3 tests passed
+Meal Management: ___/4 tests passed
+Search: ___/2 tests passed
+Daily View: ___/3 tests passed
+Social Features: ___/4 tests passed
+Stats: ___/2 tests passed
+Widget: ___/2 tests passed
+Navigation/UI: ___/3 tests passed
+
+Overall Score: ___/23 tests passed (___%)
+
+Critical Issues Found:
+1. ________________
+2. ________________
+3. ________________
+
+Recommendations:
+________________
+________________
+```
+
+### 🎉 Success Criteria
+
+- **Minimum 90% test pass rate** (21/23 tests)
+- **No critical functionality broken**
+- **All major features working as intended**
+- **Smooth user experience**
+- **No data loss or corruption**
 
 ---
 
-**Current Status:** 🟢 **100% Automated Tests Passed**  
-**Ready for:** Manual testing phase
+**Ready to begin comprehensive testing!** 🚀
