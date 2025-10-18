@@ -14,8 +14,6 @@
 		05124E672E9495D900D04311 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = 05124E662E9495D900D04311 /* Storage */; };
 		05124E692E9495D900D04311 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 05124E682E9495D900D04311 /* Supabase */; };
 		05124E6C2E9495F500D04311 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = 05124E6B2E9495F500D04311 /* Kingfisher */; };
-		059F008E2E9DAB140004C327 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 059F008D2E9DAB140004C327 /* WidgetKit.framework */; };
-		059F00902E9DAB140004C327 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 059F008F2E9DAB140004C327 /* SwiftUI.framework */; };
 		05124E772E94953400D04311 /* MacroTrackrApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05124E532E94953400D04311 /* MacroTrackrApp.swift */; };
 		05124E782E94953400D04311 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05124E542E94953400D04311 /* ContentView.swift */; };
 		05124E7A2E94953400D04311 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05124E572E94953400D04311 /* Models.swift */; };
@@ -29,9 +27,36 @@
 		05124E852E94953400D04311 /* BarcodeScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05124E822E94953400D04311 /* BarcodeScannerView.swift */; };
 		05124E862E94953400D04311 /* CoreMLFoodRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05124E832E94953400D04311 /* CoreMLFoodRecognizer.swift */; };
 		05124E872E94953400D04311 /* RecipeCollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05124E842E94953400D04311 /* RecipeCollectionView.swift */; };
-		059F00AA2E9DB5A00004C327 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05124E572E94953400D04311 /* Models.swift */; };
+		059F008E2E9DAB140004C327 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 059F008D2E9DAB140004C327 /* WidgetKit.framework */; };
+		059F00902E9DAB140004C327 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 059F008F2E9DAB140004C327 /* SwiftUI.framework */; };
 		059F009F2E9DAB160004C327 /* MacroTrackrWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 059F008B2E9DAB140004C327 /* MacroTrackrWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		059F00AA2E9DB5A00004C327 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05124E572E94953400D04311 /* Models.swift */; };
+		05124E882E94953400D04311 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 05124E552E94953400D04311 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		059F009D2E9DAB160004C327 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 05124E472E94953400D04311 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 059F008A2E9DAB140004C327;
+			remoteInfo = MacroTrackrWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		059F00A02E9DAB160004C327 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				059F009F2E9DAB160004C327 /* MacroTrackrWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		05124E4F2E94953400D04311 /* MacroTrackr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacroTrackr.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -103,30 +128,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
-
-/* Begin PBXContainerItemProxy section */
-		059F009D2E9DAB160004C327 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 05124E472E94953400D04311 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 059F008A2E9DAB140004C327;
-			remoteInfo = MacroTrackrWidgetExtension;
-		};
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		059F00A02E9DAB160004C327 /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				059F009F2E9DAB160004C327 /* MacroTrackrWidgetExtension.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXGroup section */
 		05124E462E94953400D04311 = {
@@ -239,14 +240,6 @@
 		};
 /* End PBXNativeTarget section */
 
-/* Begin PBXTargetDependency section */
-		059F009E2E9DAB160004C327 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 059F008A2E9DAB140004C327 /* MacroTrackrWidgetExtension */;
-			targetProxy = 059F009D2E9DAB160004C327 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin PBXProject section */
 		05124E472E94953400D04311 /* Project object */ = {
 			isa = PBXProject;
@@ -292,6 +285,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				05124E882E94953400D04311 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -334,6 +328,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		059F009E2E9DAB160004C327 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 059F008A2E9DAB140004C327 /* MacroTrackrWidgetExtension */;
+			targetProxy = 059F009D2E9DAB160004C327 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		05124E582E94953600D04311 /* Debug */ = {
@@ -459,6 +461,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = MacroTrackr/MacroTrackr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -503,6 +506,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = MacroTrackr/MacroTrackr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
