@@ -219,7 +219,13 @@ struct AuthenticationView: View {
                     }
                 } catch {
                     await MainActor.run {
-                        alertMessage = error.localizedDescription
+                        // Handle the specific error about provider not being enabled
+                        let errorDescription = error.localizedDescription
+                        if errorDescription.contains("Provider (issuer") || errorDescription.contains("appleid.apple.com") {
+                            alertMessage = AuthenticationError.appleProviderNotEnabled.localizedDescription
+                        } else {
+                            alertMessage = error.localizedDescription
+                        }
                         showingAlert = true
                     }
                 }
@@ -233,6 +239,7 @@ struct AuthenticationView: View {
 
 enum AuthenticationError: LocalizedError {
     case appleSignInFailed
+    case appleProviderNotEnabled
     case invalidCredentials
     case networkError
     
@@ -240,6 +247,8 @@ enum AuthenticationError: LocalizedError {
         switch self {
         case .appleSignInFailed:
             return "Apple Sign In failed. Please try again."
+        case .appleProviderNotEnabled:
+            return "Apple Sign In is not properly configured. Please contact support or use email sign in."
         case .invalidCredentials:
             return "Invalid email or password. Please check your credentials and try again."
         case .networkError:

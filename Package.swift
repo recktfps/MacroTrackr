@@ -14,7 +14,6 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/supabase/supabase-swift", from: "2.0.0"),
-        .package(url: "https://github.com/realm/realm-swift", from: "10.50.0"),
         .package(url: "https://github.com/onevcat/Kingfisher", from: "7.0.0")
     ],
     targets: [
@@ -22,7 +21,6 @@ let package = Package(
             name: "MacroTrackr",
             dependencies: [
                 .product(name: "Supabase", package: "supabase-swift"),
-                .product(name: "RealmSwift", package: "realm-swift"),
                 .product(name: "Kingfisher", package: "Kingfisher")
             ]),
         .testTarget(

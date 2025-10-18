@@ -14,7 +14,6 @@
 		05124E672E9495D900D04311 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = 05124E662E9495D900D04311 /* Storage */; };
 		05124E692E9495D900D04311 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 05124E682E9495D900D04311 /* Supabase */; };
 		05124E6C2E9495F500D04311 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = 05124E6B2E9495F500D04311 /* Kingfisher */; };
-		05124E762E949A1800D04311 /* RealmSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 05124E752E949A1800D04311 /* RealmSwift */; };
 		05124E772E94953400D04311 /* MacroTrackrApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05124E532E94953400D04311 /* MacroTrackrApp.swift */; };
 		05124E782E94953400D04311 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05124E542E94953400D04311 /* ContentView.swift */; };
 		05124E792E94953400D04311 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 05124E552E94953400D04311 /* Assets.xcassets */; };
@@ -106,7 +105,6 @@
 				05124E632E9495D900D04311 /* PostgREST in Frameworks */,
 				05124E612E9495D900D04311 /* Functions in Frameworks */,
 				05124E6C2E9495F500D04311 /* Kingfisher in Frameworks */,
-				05124E762E949A1800D04311 /* RealmSwift in Frameworks */,
 				05124E692E9495D900D04311 /* Supabase in Frameworks */,
 				05124E5F2E9495D900D04311 /* Auth in Frameworks */,
 				05124E672E9495D900D04311 /* Storage in Frameworks */,
@@ -201,7 +199,6 @@
 				05124E662E9495D900D04311 /* Storage */,
 				05124E682E9495D900D04311 /* Supabase */,
 				05124E6B2E9495F500D04311 /* Kingfisher */,
-				05124E752E949A1800D04311 /* RealmSwift */,
 			);
 			productName = MacroTrackr;
 			productReference = 05124E4F2E94953400D04311 /* MacroTrackr.app */;
@@ -259,7 +256,6 @@
 			packageReferences = (
 				05124E5D2E9495D900D04311 /* XCRemoteSwiftPackageReference "supabase-swift" */,
 				05124E6A2E9495F500D04311 /* XCRemoteSwiftPackageReference "Kingfisher" */,
-				05124E722E949A1800D04311 /* XCRemoteSwiftPackageReference "realm-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 05124E502E94953400D04311 /* Products */;
@@ -474,8 +470,31 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				SWIFT_INCLUDE_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/MacroTrackr",
+				);
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = NA.MacroTrackr;
@@ -527,8 +546,31 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				SWIFT_INCLUDE_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/MacroTrackr",
+				);
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = NA.MacroTrackr;
@@ -568,6 +610,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
+					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = NA.MacroTrackr.MacroTrackrWidget;
@@ -607,6 +650,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
+					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = NA.MacroTrackr.MacroTrackrWidget;
@@ -676,14 +720,6 @@
 				minimumVersion = 8.6.0;
 			};
 		};
-		05124E722E949A1800D04311 /* XCRemoteSwiftPackageReference "realm-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/realm/realm-swift";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 10.50.0;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -721,11 +757,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 05124E6A2E9495F500D04311 /* XCRemoteSwiftPackageReference "Kingfisher" */;
 			productName = Kingfisher;
-		};
-		05124E752E949A1800D04311 /* RealmSwift */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 05124E722E949A1800D04311 /* XCRemoteSwiftPackageReference "realm-swift" */;
-			productName = RealmSwift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

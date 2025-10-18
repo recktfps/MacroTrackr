@@ -2,7 +2,6 @@ import SwiftUI
 import Combine
 import Supabase
 import Kingfisher
-import RealmSwift
 import AuthenticationServices
 import PhotosUI
 import UserNotifications
@@ -11,7 +10,7 @@ import AVFoundation
 import Vision
 import WidgetKit
 
-// Full MacroTrackr app with Supabase, Kingfisher, and Realm
+// Full MacroTrackr app with Supabase and Kingfisher
 @main
 struct MacroTrackrApp: SwiftUI.App {
     @StateObject private var authManager = AuthenticationManager()
@@ -173,38 +172,49 @@ class AuthenticationManager: ObservableObject {
             throw AuthenticationError.appleSignInFailed
         }
         
-        let authResponse = try await supabase.auth.signInWithIdToken(
-            credentials: OpenIDConnectCredentials(
-                provider: .apple,
-                idToken: identityTokenString,
-                nonce: nil
+        do {
+            let authResponse = try await supabase.auth.signInWithIdToken(
+                credentials: OpenIDConnectCredentials(
+                    provider: .apple,
+                    idToken: identityTokenString,
+                    nonce: nil
+                )
             )
-        )
-        
-        // Create or update user profile
-        let user = authResponse.user
-        
-        let displayName = [appleIDCredential.fullName?.givenName, appleIDCredential.fullName?.familyName]
-            .compactMap { $0 }
-            .joined(separator: " ")
-        
-        let profile = UserProfile(
-            id: user.id.uuidString,
-            displayName: displayName.isEmpty ? "Apple User" : displayName,
-            email: user.email ?? "",
-            dailyGoals: MacroGoals(),
-            isPrivate: false,
-            createdAt: Date()
-        )
-        
-        try await supabase
-            .from("profiles")
-            .upsert(profile)
-            .execute()
-        
-        await MainActor.run {
-            self.isAuthenticated = true
-            self.currentUser = authResponse.user
+            
+            // Create or update user profile
+            let user = authResponse.user
+            
+            let displayName = [appleIDCredential.fullName?.givenName, appleIDCredential.fullName?.familyName]
+                .compactMap { $0 }
+                .joined(separator: " ")
+            
+            let profile = UserProfile(
+                id: user.id.uuidString,
+                displayName: displayName.isEmpty ? "Apple User" : displayName,
+                email: user.email ?? "",
+                dailyGoals: MacroGoals(),
+                isPrivate: false,
+                createdAt: Date()
+            )
+            
+            try await supabase
+                .from("profiles")
+                .upsert(profile)
+                .execute()
+            
+            await MainActor.run {
+                self.isAuthenticated = true
+                self.currentUser = authResponse.user
+            }
+        } catch {
+            // Handle the specific error about provider not being enabled
+            let errorDescription = error.localizedDescription
+            if errorDescription.contains("Provider (issuer") || errorDescription.contains("appleid.apple.com") {
+                throw AuthenticationError.appleProviderNotEnabled
+            }
+            
+            // Re-throw the original error if it's not the specific provider error
+            throw error
         }
     }
 }
@@ -317,9 +327,6 @@ class DataManager: ObservableObject {
         supabaseURL: URL(string: "https://adnjakimzfidaolaxmck.supabase.co")!,
         supabaseKey: "sb_publishable_VY1OkpLC8zEUuOkiPgxPoQ_9d0eVE9_"
     )
-    
-    // Realm for local caching
-    private let realm = try! Realm()
     
     // Realtime subscriptions
     private var friendRequestsSubscription: Task<Void, Never>?
