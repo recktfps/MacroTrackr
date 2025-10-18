@@ -5,6 +5,7 @@ import Supabase
 struct AuthenticationView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var notificationManager: NotificationManager
+    @EnvironmentObject var themeManager: ThemeManager
     @State private var isSignUp = false
     @State private var email = ""
     @State private var password = ""

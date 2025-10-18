@@ -87,8 +87,10 @@ A comprehensive food tracking iPhone app built with SwiftUI that helps users mon
 
 3. **Configure the app**
    - Open `MacroTrackr.xcodeproj` in Xcode
-   - Update the Supabase configuration in `MacroTrackrApp.swift`
-   - Replace `YOUR_SUPABASE_URL` and `YOUR_SUPABASE_ANON_KEY` with your actual values
+   - Set up environment variables for Supabase:
+     - `SUPABASE_URL`: Your Supabase project URL
+     - `SUPABASE_ANON_KEY`: Your Supabase anonymous key
+   - These can be set in Xcode's build settings or through environment variables
 
 4. **Build and run**
    - Select your target device or simulator

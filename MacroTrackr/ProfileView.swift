@@ -171,6 +171,9 @@ struct ProfileHeaderView: View {
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var isUploading = false
+    @State private var showingEditName = false
+    @State private var newDisplayName = ""
+    @State private var isUpdatingName = false
     
     var body: some View {
         VStack(spacing: 16) {
@@ -214,13 +217,36 @@ struct ProfileHeaderView: View {
             
             // Name and Email
             VStack(spacing: 4) {
-                Text(profile?.displayName ?? "User")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                HStack {
+                    Text(profile?.displayName ?? "User")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        newDisplayName = profile?.displayName ?? ""
+                        showingEditName = true
+                    }) {
+                        Image(systemName: "pencil")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                }
                 
                 Text("@\(profile?.displayName ?? "")")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
+                
+                if isUpdatingName {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Updating name...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
             
             // Privacy Status
@@ -263,6 +289,13 @@ struct ProfileHeaderView: View {
         } message: {
             Text(alertMessage)
         }
+        .sheet(isPresented: $showingEditName) {
+            EditDisplayNameSheet(
+                currentName: profile?.displayName ?? "User",
+                newName: $newDisplayName,
+                onSave: updateDisplayName
+            )
+        }
     }
     
     private func uploadProfileImage(_ image: UIImage) async {
@@ -295,6 +328,34 @@ struct ProfileHeaderView: View {
                 isUploading = false
                 alertMessage = "Failed to update profile picture: \(error.localizedDescription)"
                 showingAlert = true
+            }
+        }
+    }
+    
+    private func updateDisplayName() {
+        guard let userId = authManager.currentUser?.id.uuidString,
+              !newDisplayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        
+        let trimmedName = newDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        Task {
+            await MainActor.run {
+                isUpdatingName = true
+                showingEditName = false
+            }
+            
+            do {
+                try await dataManager.updateUserProfile(userId: userId, displayName: trimmedName)
+                await MainActor.run {
+                    isUpdatingName = false
+                    onProfileUpdated() // Refresh the profile
+                }
+            } catch {
+                await MainActor.run {
+                    isUpdatingName = false
+                    alertMessage = "Failed to update display name: \(error.localizedDescription)"
+                    showingAlert = true
+                }
             }
         }
     }
@@ -514,9 +575,9 @@ struct SettingsSection: View {
 // MARK: - Settings View
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var themeManager: ThemeManager
     @State private var notificationsEnabled = true
     @State private var hapticFeedbackEnabled = true
-    @State private var darkModeEnabled = false
     
     var body: some View {
         NavigationView {
@@ -524,7 +585,10 @@ struct SettingsView: View {
                 Section("Preferences") {
                     Toggle("Notifications", isOn: $notificationsEnabled)
                     Toggle("Haptic Feedback", isOn: $hapticFeedbackEnabled)
-                    Toggle("Dark Mode", isOn: $darkModeEnabled)
+                    Toggle("Dark Mode", isOn: Binding(
+                        get: { themeManager.isDarkMode },
+                        set: { themeManager.setDarkMode($0) }
+                    ))
                 }
                 
                 Section("Data") {
@@ -971,41 +1035,44 @@ struct UserRowView: View {
 // MARK: - Friends List View
 struct FriendsListView: View {
     @EnvironmentObject var dataManager: DataManager
+    @State private var selectedFriend: UserProfile?
     
     var body: some View {
         List(dataManager.friends) { friend in
-            HStack {
-                AsyncImage(url: URL(string: friend.profileImageURL ?? "")) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Image(systemName: "person.circle.fill")
-                        .font(.title)
-                        .foregroundColor(.secondary)
-                }
-                .frame(width: 50, height: 50)
-                .clipShape(Circle())
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(friend.displayName)
-                        .font(.headline)
+            NavigationLink(destination: FriendProfileView(friend: friend)) {
+                HStack {
+                    AsyncImage(url: URL(string: friend.profileImageURL ?? "")) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Image(systemName: "person.circle.fill")
+                            .font(.title)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(width: 50, height: 50)
+                    .clipShape(Circle())
                     
-                    Text("Friend")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(friend.displayName)
+                            .font(.headline)
+                        
+                        Text("Friend")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    Text("Friends")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.green)
+                        .cornerRadius(8)
                 }
-                
-                Spacer()
-                
-                Text("Friends")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.green)
-                    .cornerRadius(8)
             }
         }
     }
@@ -1266,6 +1333,351 @@ struct PrivacySettingsView: View {
                     showingAlert = true
                 }
             }
+        }
+    }
+}
+
+// MARK: - Edit Display Name Sheet
+struct EditDisplayNameSheet: View {
+    let currentName: String
+    @Binding var newName: String
+    let onSave: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var isTextFieldFocused: Bool
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Display Name")
+                        .font(.headline)
+                    
+                    Text("Choose how you want to be shown to other users")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                
+                TextField("Enter your display name", text: $newName)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .focused($isTextFieldFocused)
+                    .onSubmit {
+                        if !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            onSave()
+                        }
+                    }
+                
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Edit Name")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        onSave()
+                    }
+                    .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || newName == currentName)
+                }
+            }
+        }
+        .onAppear {
+            isTextFieldFocused = true
+        }
+    }
+}
+
+// MARK: - Friend Profile View
+struct FriendProfileView: View {
+    @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject var authManager: AuthenticationManager
+    let friend: UserProfile
+    
+    @State private var friendMeals: [Meal] = []
+    @State private var isLoadingMeals = false
+    @State private var selectedDate = Date()
+    @State private var showingDatePicker = false
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Friend Profile Header
+                    FriendProfileHeaderView(friend: friend)
+                    
+                    // Privacy Check
+                    if friend.isPrivate {
+                        PrivateProfileMessage()
+                    } else {
+                        // Date Selector
+                        DateSelectorView(selectedDate: $selectedDate)
+                        
+                        // Meals Section
+                        if isLoadingMeals {
+                            LoadingView()
+                        } else if friendMeals.isEmpty {
+                            EmptyMealsView()
+                        } else {
+                            FriendMealsSection(meals: friendMeals)
+                        }
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle(friend.displayName)
+            .navigationBarTitleDisplayMode(.large)
+        }
+        .onAppear {
+            if !friend.isPrivate {
+                loadFriendMeals()
+            }
+        }
+        .onChange(of: selectedDate) { _, _ in
+            if !friend.isPrivate {
+                loadFriendMealsForDate()
+            }
+        }
+    }
+    
+    private func loadFriendMeals() {
+        isLoadingMeals = true
+        Task {
+            let meals = await dataManager.loadUserMeals(for: friend.id, limit: 50)
+            await MainActor.run {
+                self.friendMeals = meals
+                self.isLoadingMeals = false
+            }
+        }
+    }
+    
+    private func loadFriendMealsForDate() {
+        isLoadingMeals = true
+        Task {
+            let meals = await dataManager.loadUserMealsForDate(for: friend.id, date: selectedDate)
+            await MainActor.run {
+                self.friendMeals = meals
+                self.isLoadingMeals = false
+            }
+        }
+    }
+}
+
+// MARK: - Friend Profile Header View
+struct FriendProfileHeaderView: View {
+    let friend: UserProfile
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            // Profile Image
+            AsyncImage(url: URL(string: friend.profileImageURL ?? "")) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } placeholder: {
+                Circle()
+                    .fill(Color(.systemGray5))
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 40))
+                            .foregroundColor(.secondary)
+                    )
+            }
+            .frame(width: 100, height: 100)
+            .clipShape(Circle())
+            
+            // Name and Status
+            VStack(spacing: 4) {
+                Text(friend.displayName)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                
+                HStack {
+                    Image(systemName: friend.isPrivate ? "lock.fill" : "globe")
+                        .foregroundColor(.secondary)
+                    Text(friend.isPrivate ? "Private Profile" : "Public Profile")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(16)
+    }
+}
+
+// MARK: - Private Profile Message
+struct PrivateProfileMessage: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "lock.circle.fill")
+                .font(.system(size: 60))
+                .foregroundColor(.secondary)
+            
+            Text("Private Profile")
+                .font(.title2)
+                .fontWeight(.semibold)
+            
+            Text("This friend has set their profile to private. Their meals are not visible to others.")
+                .font(.body)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Loading View
+struct LoadingView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .scaleEffect(1.2)
+            Text("Loading meals...")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+    }
+}
+
+// MARK: - Empty Meals View
+struct EmptyMealsView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "fork.knife.circle")
+                .font(.system(size: 50))
+                .foregroundColor(.secondary)
+            
+            Text("No meals yet")
+                .font(.headline)
+                .foregroundColor(.primary)
+            
+            Text("This friend hasn't added any meals yet.")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding()
+    }
+}
+
+// MARK: - Friend Meals Section
+struct FriendMealsSection: View {
+    let meals: [Meal]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Recent Meals")
+                    .font(.headline)
+                Spacer()
+                Text("\(meals.count) meal\(meals.count == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            LazyVStack(spacing: 12) {
+                ForEach(meals) { meal in
+                    FriendMealCard(meal: meal)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Friend Meal Card
+struct FriendMealCard: View {
+    let meal: Meal
+    
+    private var mealTypeColor: Color {
+        switch meal.mealType {
+        case .breakfast:
+            return .orange
+        case .lunch:
+            return .blue
+        case .dinner:
+            return .purple
+        case .snack:
+            return .green
+        }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(meal.name)
+                        .font(.headline)
+                        .lineLimit(1)
+                    
+                    Text(meal.mealType.rawValue.capitalized)
+                        .font(.caption)
+                        .foregroundColor(mealTypeColor)
+                        .fontWeight(.medium)
+                }
+                
+                Spacer()
+                
+                Text(meal.createdAt, style: .relative)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            // Macro highlights
+            HStack(spacing: 16) {
+                MacroStat(icon: "flame.fill", value: Int(meal.macros.calories), unit: "cal", color: .orange)
+                MacroStat(icon: "p.circle.fill", value: Int(meal.macros.protein), unit: "g", color: .blue)
+                MacroStat(icon: "c.circle.fill", value: Int(meal.macros.carbohydrates), unit: "g", color: .green)
+                MacroStat(icon: "f.circle.fill", value: Int(meal.macros.fat), unit: "g", color: .red)
+            }
+            
+            // Ingredients preview
+            if !meal.ingredients.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Ingredients")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                    
+                    Text(meal.ingredients.prefix(3).joined(separator: ", ") + (meal.ingredients.count > 3 ? "..." : ""))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+    }
+}
+
+// MARK: - Macro Stat
+struct MacroStat: View {
+    let icon: String
+    let value: Int
+    let unit: String
+    let color: Color
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+                .font(.caption)
+            Text("\(value)")
+                .font(.caption)
+                .fontWeight(.medium)
+            Text(unit)
+                .font(.caption2)
+                .foregroundColor(.secondary)
         }
     }
 }

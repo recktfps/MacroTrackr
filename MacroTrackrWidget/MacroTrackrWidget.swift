@@ -67,9 +67,9 @@ struct Provider: TimelineProvider {
             macros = data.macros
             goals = data.goals
         } else {
-            // Fallback to default values
-            macros = MacroNutrition(calories: 1200, protein: 80, carbohydrates: 120, fat: 45, sugar: 30, fiber: 15)
-            goals = MacroGoals()
+            // When no data is available, show zeros to reflect actual user progress
+            macros = MacroNutrition(calories: 0, protein: 0, carbohydrates: 0, fat: 0, sugar: 0, fiber: 0)
+            goals = MacroGoals() // Keep default goals
         }
         
         // Calculate progress percentages
@@ -335,11 +335,13 @@ struct MacroWidgetCard: View {
                 .fontWeight(.medium)
                 .foregroundColor(.secondary)
             
-            HStack(alignment: .bottom, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text("\(current)")
                     .font(.title3)
                     .fontWeight(.bold)
                     .foregroundColor(color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 
                 Text("/\(goal)")
                     .font(.caption)
@@ -372,11 +374,13 @@ struct MacroWidgetRow: View {
                 .foregroundColor(.primary)
                 .frame(width: 80, alignment: .leading)
             
-            HStack(alignment: .bottom, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text("\(current)")
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundColor(color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 
                 Text("/\(goal) \(unit)")
                     .font(.caption)

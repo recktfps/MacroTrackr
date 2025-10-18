@@ -397,19 +397,62 @@ struct MacroInputField: View {
     @Binding var value: Double
     let unit: String
     
+    @State private var textValue: String = ""
+    @FocusState private var isFocused: Bool
+    
     var body: some View {
         HStack {
             Text(title)
             Spacer()
             HStack(spacing: 4) {
-                TextField("0", value: $value, format: .number)
+                TextField("0", text: $textValue)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
                     .frame(width: 80)
+                    .focused($isFocused)
+                    .onTapGesture {
+                        if value == 0 {
+                            textValue = ""
+                        }
+                    }
+                    .onChange(of: textValue) { _, newValue in
+                        // Update the binding value when text changes
+                        if let doubleValue = Double(newValue) {
+                            value = doubleValue
+                        } else if newValue.isEmpty {
+                            value = 0
+                        }
+                    }
+                    .onChange(of: isFocused) { _, focused in
+                        if focused && value == 0 {
+                            textValue = ""
+                        }
+                    }
+                    .onAppear {
+                        updateTextFromValue()
+                    }
+                    .onChange(of: value) { _, newValue in
+                        if !isFocused {
+                            updateTextFromValue()
+                        }
+                    }
                 
                 Text(unit)
                     .foregroundColor(.secondary)
                     .frame(width: 30, alignment: .leading)
+            }
+        }
+    }
+    
+    private func updateTextFromValue() {
+        if value == 0 {
+            textValue = ""
+        } else {
+            // Handle both integers and decimals properly
+            if value.truncatingRemainder(dividingBy: 1) == 0 {
+                textValue = String(format: "%.0f", value)
+            } else {
+                textValue = String(format: "%.1f", value)
             }
         }
     }

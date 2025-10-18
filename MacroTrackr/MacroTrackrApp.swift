@@ -16,6 +16,7 @@ struct MacroTrackrApp: SwiftUI.App {
     @StateObject private var authManager = AuthenticationManager()
     @StateObject private var dataManager = DataManager()
     @StateObject private var notificationManager = NotificationManager()
+    @StateObject private var themeManager = ThemeManager()
     
     var body: some Scene {
         WindowGroup {
@@ -24,6 +25,8 @@ struct MacroTrackrApp: SwiftUI.App {
                     .environmentObject(authManager)
                     .environmentObject(dataManager)
                     .environmentObject(notificationManager)
+                    .environmentObject(themeManager)
+                    .preferredColorScheme(themeManager.isDarkMode ? .dark : .light)
                     .onAppear {
                         authManager.checkAuthStatus()
                     }
@@ -31,6 +34,8 @@ struct MacroTrackrApp: SwiftUI.App {
                 AuthenticationView()
                     .environmentObject(authManager)
                     .environmentObject(notificationManager)
+                    .environmentObject(themeManager)
+                    .preferredColorScheme(themeManager.isDarkMode ? .dark : .light)
                     .onAppear {
                         authManager.checkAuthStatus()
                     }
@@ -219,6 +224,51 @@ class AuthenticationManager: ObservableObject {
     }
 }
 
+// MARK: - Theme Manager
+class ThemeManager: ObservableObject {
+    @Published var isDarkMode: Bool = true // Default to dark mode
+    
+    private let userDefaults = UserDefaults.standard
+    private let darkModeKey = "isDarkModeEnabled"
+    
+    init() {
+        // Load saved preference, default to dark mode if not set
+        self.isDarkMode = userDefaults.object(forKey: darkModeKey) as? Bool ?? true
+        
+        // Apply the theme after a small delay to ensure the UI is ready
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.applyTheme()
+        }
+    }
+    
+    func toggleTheme() {
+        isDarkMode.toggle()
+        savePreference()
+        applyTheme()
+    }
+    
+    func setDarkMode(_ enabled: Bool) {
+        isDarkMode = enabled
+        savePreference()
+        applyTheme()
+    }
+    
+    private func savePreference() {
+        userDefaults.set(isDarkMode, forKey: darkModeKey)
+    }
+    
+    func applyTheme() {
+        DispatchQueue.main.async {
+            // Update the app's color scheme for all windows
+            for windowScene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
+                for window in windowScene.windows {
+                    window.overrideUserInterfaceStyle = self.isDarkMode ? .dark : .light
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Apple Sign In Support
 class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate {
     private let continuation: CheckedContinuation<ASAuthorization, Error>
@@ -324,8 +374,8 @@ class DataManager: ObservableObject {
     @Published var isLoading = false
     
     let supabase = SupabaseClient(
-        supabaseURL: URL(string: "https://adnjakimzfidaolaxmck.supabase.co")!,
-        supabaseKey: "sb_publishable_VY1OkpLC8zEUuOkiPgxPoQ_9d0eVE9_"
+        supabaseURL: URL(string: Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as! String)!,
+        supabaseKey: Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as! String
     )
     
     // Realtime subscriptions
@@ -377,6 +427,46 @@ class DataManager: ObservableObject {
             }
         } catch {
             print("Error loading saved meals: \(error)")
+        }
+    }
+    
+    func loadUserMeals(for userId: String, limit: Int = 50) async -> [Meal] {
+        do {
+            let meals: [Meal] = try await supabase
+                .from("meals")
+                .select()
+                .eq("user_id", value: userId)
+                .order("created_at", ascending: false)
+                .limit(limit)
+                .execute()
+                .value
+            
+            return meals
+        } catch {
+            print("Error loading user meals: \(error)")
+            return []
+        }
+    }
+    
+    func loadUserMealsForDate(for userId: String, date: Date) async -> [Meal] {
+        let startOfDay = Calendar.current.startOfDay(for: date)
+        let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)!
+        
+        do {
+            let meals: [Meal] = try await supabase
+                .from("meals")
+                .select()
+                .eq("user_id", value: userId)
+                .gte("created_at", value: startOfDay)
+                .lt("created_at", value: endOfDay)
+                .order("created_at", ascending: false)
+                .execute()
+                .value
+            
+            return meals
+        } catch {
+            print("Error loading user meals for date: \(error)")
+            return []
         }
     }
     
@@ -867,6 +957,17 @@ class DataManager: ObservableObject {
             .execute()
     }
     
+    func updateUserProfile(userId: String, displayName: String) async throws {
+        try await supabase
+            .from("profiles")
+            .update([
+                "display_name": displayName,
+                "updated_at": Date().ISO8601Format()
+            ])
+            .eq("id", value: userId)
+            .execute()
+    }
+    
     // MARK: - Widget Data Sharing
     func updateWidgetData(userId: String) async {
         
@@ -1048,6 +1149,7 @@ struct MainTabView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var dataManager: DataManager
     @EnvironmentObject var notificationManager: NotificationManager
+    @EnvironmentObject var themeManager: ThemeManager
     @State private var selectedTab = 0
     
     var body: some View {
@@ -1096,6 +1198,8 @@ struct MainTabView: View {
                     await dataManager.loadFriendRequests(for: userId)
                     await dataManager.loadFriends(for: userId)
                     await dataManager.loadAllUsers(for: userId)
+                    // Update widget data with actual user progress (including zeros)
+                    await dataManager.updateWidgetData(userId: userId)
                 }
                 // Subscribe to realtime updates
                 dataManager.subscribeToFriendRequests(userId: userId)
@@ -1109,6 +1213,7 @@ struct MainTabView: View {
         .onAppear {
             authManager.checkAuthStatus()
             notificationManager.requestPermission()
+            themeManager.applyTheme()
         }
     }
 }

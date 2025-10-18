@@ -51,8 +51,8 @@
 	<key>NSAppleSignInUsageDescription</key>
 	<string>MacroTrackr uses Sign in with Apple to securely authenticate your account and sync your nutrition data.</string>
 	<key>SUPABASE_URL</key>
-	<string>https://adnjakimzfidaolaxmck.supabase.co</string>
+	<string>$(SUPABASE_URL)</string>
 	<key>SUPABASE_ANON_KEY</key>
-	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkbmpha2ltemZpZGFvbGF4bWNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk3ODU4MzksImV4cCI6MjA3NTM2MTgzOX0.zEh9ir99hlzws89nD9eh3eAeFjw0SgNE7ILe4H5RSdQ</string>
+	<string>$(SUPABASE_ANON_KEY)</string>
 </dict>
 </plist>

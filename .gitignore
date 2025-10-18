@@ -102,6 +102,12 @@ iOSInjectionProject/
 # Supabase
 .supabase/
 
+# Apple Sign In Keys
+*.p8
+*AuthKey*
+Apple_SignIn_*
+.secrets/
+
 # Temporary files
 *.tmp
 *.temp

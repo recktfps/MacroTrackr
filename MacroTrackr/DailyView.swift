@@ -265,11 +265,13 @@ struct ProgressCard: View {
             }
             
             VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .bottom, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text("\(Int(current))")
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(color)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                     
                     Text(unit)
                         .font(.caption)
