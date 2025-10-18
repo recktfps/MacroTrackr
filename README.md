@@ -87,14 +87,42 @@ A comprehensive food tracking iPhone app built with SwiftUI that helps users mon
 
 3. **Configure the app**
    - Open `MacroTrackr.xcodeproj` in Xcode
-   - Set up environment variables for Supabase:
+   - Set up environment variables:
      - `SUPABASE_URL`: Your Supabase project URL
      - `SUPABASE_ANON_KEY`: Your Supabase anonymous key
+     - `USDA_API_KEY`: Your USDA FoodData Central API key (optional)
    - These can be set in Xcode's build settings or through environment variables
 
 4. **Build and run**
    - Select your target device or simulator
    - Build and run the project (⌘+R)
+
+### USDA Food Database Integration
+
+The app uses the USDA FoodData Central API to provide a comprehensive ingredient database:
+
+1. **Get USDA API Key** (Required for online features)
+   - Register at [fdc.nal.usda.gov/api-guide.html](https://fdc.nal.usda.gov/api-guide.html)
+   - Click "Get API Key" and create a free account
+   - Copy your API key (it looks like: `DEMO_KEY` but with your actual key)
+   
+2. **Configure API Key in Xcode**
+   - Open your project in Xcode
+   - Select your target → Build Settings
+   - Search for "User-Defined"
+   - Click the "+" button and add:
+     - **Name**: `USDA_API_KEY`
+     - **Value**: Your API key from step 1
+   - Build and run - the app will now use the USDA database
+
+**Features:**
+- Downloads popular ingredients on first launch (requires API key)
+- Stores ingredients locally for offline use
+- Online search for specific foods via globe icon (requires API key)
+- Automatic daily updates of ingredient database
+- **Fallback**: Uses local ingredient database if API key is missing
+
+**Note**: Without a USDA API key, the app will use the built-in fallback ingredients and OpenFoodFacts for barcode scanning.
 
 ### Supabase Setup
 

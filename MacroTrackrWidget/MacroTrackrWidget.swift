@@ -44,18 +44,31 @@ struct Provider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
         var entries: [MacroEntry] = []
         
+        let currentDate = Date()
+        let calendar = Calendar.current
+        
         // Load current data
         let currentData = WidgetDataManager.shared.loadTodaysData()
         
-        // Generate entries for the next few hours
-        let currentDate = Date()
-        for hourOffset in 0 ..< 6 {
-            let entryDate = Calendar.current.date(byAdding: .hour, value: hourOffset, to: currentDate)!
+        // Generate entries for today and tomorrow to handle day changes
+        let startOfDay = calendar.startOfDay(for: currentDate)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        
+        // Add entries for the rest of today (every 2 hours)
+        var entryDate = currentDate
+        while entryDate < endOfDay {
             let entry = createEntry(with: currentData, date: entryDate)
             entries.append(entry)
+            entryDate = calendar.date(byAdding: .hour, value: 2, to: entryDate)!
         }
-
-        let timeline = Timeline(entries: entries, policy: .atEnd)
+        
+        // Add one entry for tomorrow at midnight to ensure reset
+        let tomorrowMidnight = endOfDay
+        let tomorrowEntry = createEntry(with: nil, date: tomorrowMidnight) // nil means zeros for new day
+        entries.append(tomorrowEntry)
+        
+        // Set timeline to refresh at end of day
+        let timeline = Timeline(entries: entries, policy: .after(endOfDay))
         completion(timeline)
     }
     

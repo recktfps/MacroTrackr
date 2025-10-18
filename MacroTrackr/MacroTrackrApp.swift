@@ -371,6 +371,10 @@ class DataManager: ObservableObject {
     @Published var allUsers: [UserWithFriendshipInfo] = []
     @Published var friendRequests: [FriendRequest] = []
     @Published var pendingFriendRequests: [FriendRequest] = []
+    @Published var ingredients: [Ingredient] = []
+    @Published var userIngredientPresets: [UserIngredientPreset] = []
+    @Published var publicRecipes: [RecipeCollection] = []
+    @Published var userRecipes: [RecipeCollection] = []
     @Published var isLoading = false
     
     let supabase = SupabaseClient(
@@ -471,13 +475,33 @@ class DataManager: ObservableObject {
     }
     
     func addMeal(_ meal: Meal) async throws {
-        try await supabase
-            .from("meals")
-            .insert(meal)
-            .execute()
-        
-        await loadTodayMeals(for: meal.userId)
-        await updateWidgetData(userId: meal.userId) // Update widget when new meal is added
+        do {
+            // Ensure we have a valid user ID for the insert
+            var mealToInsert = meal
+            guard !mealToInsert.userId.isEmpty else {
+                throw NSError(domain: "MealError", code: 400, userInfo: [
+                    NSLocalizedDescriptionKey: "User ID is required to save meal"
+                ])
+            }
+            
+            try await supabase
+                .from("meals")
+                .insert(mealToInsert)
+                .execute()
+            
+            await loadTodayMeals(for: meal.userId)
+            await updateWidgetData(userId: meal.userId) // Update widget when new meal is added
+        } catch {
+            print("Error adding meal: \(error)")
+            // Provide more specific error message for row-level security policy
+            if error.localizedDescription.contains("row-level security policy") {
+                throw NSError(domain: "MealError", code: 403, userInfo: [
+                    NSLocalizedDescriptionKey: "Unable to save meal. Please ensure you are logged in and try again."
+                ])
+            } else {
+                throw error
+            }
+        }
     }
     
     func updateMeal(_ meal: Meal) async throws {
@@ -968,6 +992,248 @@ class DataManager: ObservableObject {
             .execute()
     }
     
+    // MARK: - Ingredient Management
+    func loadIngredients() async {
+        // First, try to load from local storage
+        let localIngredients = LocalIngredientsManager.loadIngredients()
+        
+        if !localIngredients.isEmpty {
+            await MainActor.run {
+                self.ingredients = localIngredients
+            }
+        } else {
+            // If no local ingredients, load fallback while downloading
+            await MainActor.run {
+                self.ingredients = getFallbackIngredients()
+            }
+        }
+        
+        // Check if we should update ingredients
+        if LocalIngredientsManager.shouldUpdateIngredients() || localIngredients.isEmpty {
+            await downloadUSDAIngredients()
+        }
+    }
+    
+    func downloadUSDAIngredients() async {
+        guard USDADatabaseService.hasValidAPIKey else {
+            print("USDA API key not configured - using local ingredients only")
+            return
+        }
+        
+        await MainActor.run {
+            isLoading = true
+        }
+        
+        do {
+            let downloadedIngredients = try await USDADatabaseService.downloadPopularIngredients()
+            LocalIngredientsManager.saveIngredients(downloadedIngredients)
+            
+            await MainActor.run {
+                self.ingredients = downloadedIngredients
+                self.isLoading = false
+            }
+        } catch APIError.missingAPIKey {
+            print("USDA API key issue: Missing API key")
+            await MainActor.run {
+                self.isLoading = false
+                // Keep local ingredients if download fails
+                if self.ingredients.isEmpty {
+                    self.ingredients = getFallbackIngredients()
+                }
+            }
+        } catch APIError.invalidAPIKey {
+            print("USDA API key issue: Invalid API key")
+            await MainActor.run {
+                self.isLoading = false
+                // Keep local ingredients if download fails
+                if self.ingredients.isEmpty {
+                    self.ingredients = getFallbackIngredients()
+                }
+            }
+        } catch {
+            print("Error downloading USDA ingredients: \(error)")
+            await MainActor.run {
+                self.isLoading = false
+                // Keep local ingredients if download fails
+                if self.ingredients.isEmpty {
+                    self.ingredients = getFallbackIngredients()
+                }
+            }
+        }
+    }
+    
+    func searchUSDAFoods(query: String) async -> [Ingredient] {
+        guard USDADatabaseService.hasValidAPIKey else {
+            print("USDA API key not configured - cannot search online")
+            return []
+        }
+        
+        do {
+            return try await USDADatabaseService.searchFoods(query: query)
+        } catch APIError.missingAPIKey {
+            print("USDA API key issue: Missing API key")
+            return []
+        } catch APIError.invalidAPIKey {
+            print("USDA API key issue: Invalid API key")
+            return []
+        } catch {
+            print("Error searching USDA foods: \(error)")
+            return []
+        }
+    }
+    
+    func loadUserIngredientPresets(for userId: String) async {
+        do {
+            let presets: [UserIngredientPreset] = try await supabase
+                .from("user_ingredient_presets")
+                .select()
+                .eq("user_id", value: userId)
+                .order("name")
+                .execute()
+                .value
+            
+            await MainActor.run {
+                self.userIngredientPresets = presets
+            }
+        } catch {
+            print("Error loading user ingredient presets: \(error)")
+        }
+    }
+    
+    func searchIngredients(query: String) -> [Ingredient] {
+        let lowercasedQuery = query.lowercased()
+        return ingredients.filter { ingredient in
+            ingredient.name.lowercased().contains(lowercasedQuery)
+        }
+    }
+    
+    func lookupBarcode(_ barcode: String) async -> BarcodeScanResult? {
+        do {
+            return try await BarcodeLookupService.lookupProduct(barcode: barcode)
+        } catch {
+            print("Error looking up barcode: \(error)")
+            return nil
+        }
+    }
+    
+    func getRecentIngredients() -> [Ingredient] {
+        return LocalIngredientsManager.loadRecentIngredients()
+    }
+    
+    func addRecentIngredient(_ ingredient: Ingredient) {
+        LocalIngredientsManager.addRecentIngredient(ingredient)
+    }
+    
+    func saveUserIngredientPreset(_ preset: UserIngredientPreset) async throws {
+        try await supabase
+            .from("user_ingredient_presets")
+            .insert(preset)
+            .execute()
+        
+        await loadUserIngredientPresets(for: preset.userId)
+    }
+    
+    func deleteUserIngredientPreset(presetId: String, userId: String) async throws {
+        try await supabase
+            .from("user_ingredient_presets")
+            .delete()
+            .eq("id", value: presetId)
+            .execute()
+        
+        await loadUserIngredientPresets(for: userId)
+    }
+    
+    // MARK: - Recipe Collections
+    func loadPublicRecipes() async {
+        do {
+            let recipes: [RecipeCollection] = try await supabase
+                .from("recipe_collections")
+                .select()
+                .eq("is_public", value: true)
+                .order("created_at", ascending: false)
+                .limit(100)
+                .execute()
+                .value
+            
+            await MainActor.run {
+                self.publicRecipes = recipes
+            }
+        } catch {
+            print("Error loading public recipes: \(error)")
+        }
+    }
+    
+    func loadUserRecipes(for userId: String) async {
+        do {
+            let recipes: [RecipeCollection] = try await supabase
+                .from("recipe_collections")
+                .select()
+                .eq("user_id", value: userId)
+                .order("created_at", ascending: false)
+                .execute()
+                .value
+            
+            await MainActor.run {
+                self.userRecipes = recipes
+            }
+        } catch {
+            print("Error loading user recipes: \(error)")
+        }
+    }
+    
+    func saveRecipe(_ recipe: RecipeCollection) async throws {
+        try await supabase
+            .from("recipe_collections")
+            .insert(recipe)
+            .execute()
+        
+        await loadUserRecipes(for: recipe.userId)
+        await loadPublicRecipes() // Update public recipes too
+    }
+    
+    func rateRecipe(recipeId: String, userId: String, rating: Int, review: String? = nil) async throws {
+        let recipeRating = RecipeRating(
+            id: UUID().uuidString,
+            recipeId: recipeId,
+            userId: userId,
+            rating: rating,
+            review: review
+        )
+        
+        try await supabase
+            .from("recipe_ratings")
+            .insert(recipeRating)
+            .execute()
+    }
+    
+    func getRecipeRatings(for recipeId: String) async -> [RecipeRating] {
+        do {
+            return try await supabase
+                .from("recipe_ratings")
+                .select()
+                .eq("recipe_id", value: recipeId)
+                .order("created_at", ascending: false)
+                .execute()
+                .value
+        } catch {
+            print("Error loading recipe ratings: \(error)")
+            return []
+        }
+    }
+    
+    private func getFallbackIngredients() -> [Ingredient] {
+        return [
+            Ingredient(id: "1", name: "Chicken Breast", macros: MacroNutrition(calories: 165, protein: 31, carbohydrates: 0, fat: 3.6), category: .protein),
+            Ingredient(id: "2", name: "Brown Rice", macros: MacroNutrition(calories: 112, protein: 2.6, carbohydrates: 22, fat: 0.9), category: .grains),
+            Ingredient(id: "3", name: "Avocado", macros: MacroNutrition(calories: 160, protein: 2, carbohydrates: 9, fat: 15), category: .fats),
+            Ingredient(id: "4", name: "Spinach", macros: MacroNutrition(calories: 7, protein: 0.9, carbohydrates: 1.1, fat: 0.1), category: .vegetables),
+            Ingredient(id: "5", name: "Eggs", macros: MacroNutrition(calories: 68, protein: 6, carbohydrates: 0.4, fat: 4.6), category: .protein),
+            Ingredient(id: "6", name: "Banana", macros: MacroNutrition(calories: 89, protein: 1.1, carbohydrates: 23, fat: 0.3), category: .fruits),
+            Ingredient(id: "7", name: "Olive Oil", macros: MacroNutrition(calories: 119, protein: 0, carbohydrates: 0, fat: 13.5), category: .fats),
+            Ingredient(id: "8", name: "Greek Yogurt", macros: MacroNutrition(calories: 59, protein: 10, carbohydrates: 3.6, fat: 0.4), category: .dairy)
+        ]
+    }
+    
     // MARK: - Widget Data Sharing
     func updateWidgetData(userId: String) async {
         
@@ -1198,6 +1464,8 @@ struct MainTabView: View {
                     await dataManager.loadFriendRequests(for: userId)
                     await dataManager.loadFriends(for: userId)
                     await dataManager.loadAllUsers(for: userId)
+                    await dataManager.loadIngredients()
+                    await dataManager.loadUserIngredientPresets(for: userId)
                     // Update widget data with actual user progress (including zeros)
                     await dataManager.updateWidgetData(userId: userId)
                 }
@@ -1214,6 +1482,320 @@ struct MainTabView: View {
             authManager.checkAuthStatus()
             notificationManager.requestPermission()
             themeManager.applyTheme()
+        }
+    }
+}
+
+// MARK: - USDA FoodData Central API Service
+class USDADatabaseService {
+    private static let baseURL = "https://api.nal.usda.gov/fdc/v1"
+    
+    // Try to get API key from environment
+    private static var apiKey: String? {
+        if let key = Bundle.main.object(forInfoDictionaryKey: "USDA_API_KEY") as? String, !key.isEmpty, key != "YOUR_API_KEY_HERE" {
+            return key
+        }
+        return nil // No valid API key found
+    }
+    
+    static var hasValidAPIKey: Bool {
+        return apiKey != nil
+    }
+    
+    // Popular food categories to download
+    private static let popularSearches = [
+        "chicken", "beef", "pork", "fish", "salmon", "tuna", "eggs", "milk", "cheese", "yogurt",
+        "rice", "pasta", "bread", "potato", "sweet potato", "broccoli", "spinach", "tomato",
+        "apple", "banana", "orange", "strawberry", "blueberry", "avocado", "almond", "walnut",
+        "olive oil", "coconut oil", "butter", "honey", "oatmeal", "quinoa"
+    ]
+    
+    static func downloadPopularIngredients() async throws -> [Ingredient] {
+        guard hasValidAPIKey else {
+            throw APIError.missingAPIKey
+        }
+        
+        var allIngredients: [Ingredient] = []
+        
+        // Download ingredients for popular foods
+        for searchTerm in popularSearches.prefix(20) { // Limit to prevent too many requests
+            do {
+                let ingredients = try await searchFoods(query: searchTerm)
+                allIngredients.append(contentsOf: ingredients)
+                
+                // Small delay between requests to be respectful
+                try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+            } catch APIError.missingAPIKey {
+                // Don't continue if API key issues
+                throw APIError.missingAPIKey
+            } catch APIError.invalidAPIKey {
+                // Don't continue if API key issues
+                throw APIError.invalidAPIKey
+            } catch {
+                print("Failed to fetch ingredients for '\(searchTerm)': \(error)")
+                continue
+            }
+        }
+        
+        // Remove duplicates and limit to reasonable number
+        let uniqueIngredients = Array(Set(allIngredients.map { $0.name }))
+            .compactMap { name in
+                allIngredients.first { $0.name == name }
+            }
+        
+        return Array(uniqueIngredients.prefix(500)) // Limit to 500 most relevant ingredients
+    }
+    
+    static func searchFoods(query: String) async throws -> [Ingredient] {
+        guard let apiKey = apiKey else {
+            throw APIError.missingAPIKey
+        }
+        
+        let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        let url = URL(string: "\(baseURL)/foods/search?query=\(encodedQuery)&api_key=\(apiKey)&dataType=Foundation&pageSize=10")!
+        
+        let (data, response) = try await URLSession.shared.data(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.networkError
+        }
+        
+        // Handle API key errors
+        if httpResponse.statusCode == 401 {
+            throw APIError.invalidAPIKey
+        } else if httpResponse.statusCode != 200 {
+            throw APIError.invalidResponse
+        }
+        
+        let usdaResponse = try JSONDecoder().decode(USDAApiResponse.self, from: data)
+        let ingredients = usdaResponse.foods.compactMap { food in
+            convertUSDAFoodToIngredient(food)
+        }
+        
+        return ingredients
+    }
+    
+    private static func convertUSDAFoodToIngredient(_ usdaFood: USDAFood) -> Ingredient? {
+        // Extract nutrition data from USDA food
+        var calories = 0.0
+        var protein = 0.0
+        var carbohydrates = 0.0
+        var fat = 0.0
+        var sugar = 0.0
+        var fiber = 0.0
+        
+        // Map USDA nutrient IDs to our macro values
+        for foodNutrient in usdaFood.foodNutrients {
+            switch foodNutrient.nutrient.id {
+            case 1008: // Energy (kcal)
+                calories = foodNutrient.amount
+            case 1003: // Protein
+                protein = foodNutrient.amount
+            case 1005: // Carbohydrates
+                carbohydrates = foodNutrient.amount
+            case 1004: // Fat
+                fat = foodNutrient.amount
+            case 2000: // Sugars
+                sugar = foodNutrient.amount
+            case 1079: // Fiber
+                fiber = foodNutrient.amount
+            default:
+                break
+            }
+        }
+        
+        // Only include foods with meaningful nutrition data
+        guard calories > 0 || protein > 0 || carbohydrates > 0 || fat > 0 else {
+            return nil
+        }
+        
+        // Clean up food description
+        let cleanName = cleanFoodName(usdaFood.description)
+        
+        // Determine category based on food name and nutrients
+        let category = categorizeFood(cleanName, calories: calories, protein: protein, carbohydrates: carbohydrates, fat: fat)
+        
+        let macros = MacroNutrition(
+            calories: calories,
+            protein: protein,
+            carbohydrates: carbohydrates,
+            fat: fat,
+            sugar: sugar,
+            fiber: fiber
+        )
+        
+        return Ingredient(
+            id: "usda_\(usdaFood.fdcId)",
+            name: cleanName,
+            macros: macros,
+            category: category,
+            createdAt: Date()
+        )
+    }
+    
+    private static func cleanFoodName(_ name: String) -> String {
+        // Remove brand names and extra details to get cleaner ingredient names
+        var cleanName = name
+        
+        // Remove common prefixes/suffixes
+        let removePatterns = [
+            "\\(.*\\)", // Remove text in parentheses
+            ", raw", ", cooked", ", roasted", ", grilled",
+            ", fresh", ", frozen", ", canned",
+            ", without salt", ", with salt",
+            ", USDA", ", generic"
+        ]
+        
+        for pattern in removePatterns {
+            cleanName = cleanName.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
+        }
+        
+        // Capitalize properly
+        return cleanName.trimmingCharacters(in: .whitespacesAndNewlines)
+            .capitalized
+    }
+    
+    private static func categorizeFood(_ name: String, calories: Double, protein: Double, carbohydrates: Double, fat: Double) -> IngredientCategory {
+        let lowercasedName = name.lowercased()
+        
+        // Protein-rich foods
+        if protein > carbohydrates && protein > fat {
+            return .protein
+        }
+        
+        // Category based on food name keywords
+        if lowercasedName.contains("chicken") || lowercasedName.contains("beef") || lowercasedName.contains("pork") ||
+           lowercasedName.contains("fish") || lowercasedName.contains("salmon") || lowercasedName.contains("tuna") ||
+           lowercasedName.contains("turkey") || lowercasedName.contains("lamb") || lowercasedName.contains("egg") {
+            return .protein
+        }
+        
+        if lowercasedName.contains("rice") || lowercasedName.contains("bread") || lowercasedName.contains("pasta") ||
+           lowercasedName.contains("potato") || lowercasedName.contains("oats") || lowercasedName.contains("quinoa") {
+            return .grains
+        }
+        
+        if lowercasedName.contains("apple") || lowercasedName.contains("banana") || lowercasedName.contains("orange") ||
+           lowercasedName.contains("berry") || lowercasedName.contains("fruit") {
+            return .fruits
+        }
+        
+        if lowercasedName.contains("broccoli") || lowercasedName.contains("spinach") || lowercasedName.contains("carrot") ||
+           lowercasedName.contains("tomato") || lowercasedName.contains("onion") || lowercasedName.contains("pepper") {
+            return .vegetables
+        }
+        
+        if lowercasedName.contains("milk") || lowercasedName.contains("cheese") || lowercasedName.contains("yogurt") ||
+           lowercasedName.contains("butter") || lowercasedName.contains("cream") {
+            return .dairy
+        }
+        
+        if lowercasedName.contains("oil") || lowercasedName.contains("avocado") || lowercasedName.contains("nut") ||
+           lowercasedName.contains("seed") && fat > 10 {
+            return .fats
+        }
+        
+        // Default based on macronutrients
+        if carbohydrates > protein && carbohydrates > fat {
+            return .carbs
+        } else if fat > protein && fat > carbohydrates {
+            return .fats
+        } else {
+            return .other
+        }
+    }
+}
+
+// MARK: - Barcode Lookup Service
+class BarcodeLookupService {
+    // Using OpenFoodFacts API (free and comprehensive)
+    private static let baseURL = "https://world.openfoodfacts.org/api/v0/product"
+    
+    static func lookupProduct(barcode: String) async throws -> BarcodeScanResult {
+        let url = URL(string: "\(baseURL)/\(barcode).json")!
+        
+        let (data, response) = try await URLSession.shared.data(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw APIError.invalidResponse
+        }
+        
+        let openFoodFactsResponse = try JSONDecoder().decode(OpenFoodFactsResponse.self, from: data)
+        
+        guard openFoodFactsResponse.status == 1,
+              let product = openFoodFactsResponse.product else {
+            throw APIError.invalidResponse
+        }
+        
+        // Extract nutrition information
+        let nutrition = extractNutrition(from: product)
+        
+        return BarcodeScanResult(
+            barcode: barcode,
+            productName: product.productName ?? "Unknown Product",
+            brand: product.brands,
+            imageURL: product.imageURL,
+            nutrition: nutrition,
+            servingSize: product.servingSize
+        )
+    }
+    
+    private static func extractNutrition(from product: OpenFoodFactsProduct) -> MacroNutrition {
+        let nutriments = product.nutriments
+        
+        return MacroNutrition(
+            calories: nutriments?["energy-kcal_100g"] ?? nutriments?["energy_100g"] ?? 0,
+            protein: nutriments?["proteins_100g"] ?? 0,
+            carbohydrates: nutriments?["carbohydrates_100g"] ?? 0,
+            fat: nutriments?["fat_100g"] ?? 0,
+            sugar: nutriments?["sugars_100g"] ?? 0,
+            fiber: nutriments?["fiber_100g"] ?? 0
+        )
+    }
+}
+
+// MARK: - OpenFoodFacts API Models
+private struct OpenFoodFactsResponse: Codable {
+    let status: Int
+    let product: OpenFoodFactsProduct?
+}
+
+private struct OpenFoodFactsProduct: Codable {
+    let productName: String?
+    let brands: String?
+    let imageURL: String?
+    let servingSize: String?
+    let nutriments: [String: Double]?
+    
+    enum CodingKeys: String, CodingKey {
+        case productName = "product_name"
+        case brands
+        case imageURL = "image_url"
+        case servingSize = "serving_size"
+        case nutriments
+    }
+}
+
+enum APIError: Error {
+    case invalidResponse
+    case decodingError
+    case networkError
+    case missingAPIKey
+    case invalidAPIKey
+    
+    var localizedDescription: String {
+        switch self {
+        case .missingAPIKey:
+            return "USDA API key is missing. Please add USDA_API_KEY to your build settings."
+        case .invalidAPIKey:
+            return "USDA API key is invalid. Please check your API key."
+        case .invalidResponse:
+            return "Invalid response from server"
+        case .decodingError:
+            return "Failed to decode response data"
+        case .networkError:
+            return "Network connection error"
         }
     }
 }

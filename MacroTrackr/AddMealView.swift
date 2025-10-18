@@ -15,6 +15,7 @@ struct AddMealView: View {
     @State private var selectedImage: PhotosPickerItem?
     @State private var mealImage: UIImage?
     @State private var ingredients: [String] = [""]
+    @State private var ingredientMacros: [MacroNutrition] = [MacroNutrition()]
     @State private var cookingInstructions = ""
     @State private var macros = MacroNutrition()
     @State private var baseMacros = MacroNutrition() // Store the base macros per unit
@@ -25,6 +26,13 @@ struct AddMealView: View {
     @State private var alertMessage = ""
     @State private var isLoading = false
     @State private var saveAsPreset = false
+    @State private var showingIngredientPicker = false
+    @State private var calculateMacrosFromIngredients = false
+    @State private var searchText = ""
+    @State private var showingBarcodeScanner = false
+    @State private var isRecognizingFood = false
+    @State private var quantityText = ""
+    @FocusState private var isQuantityFocused: Bool
     
     var body: some View {
         NavigationView {
@@ -68,6 +76,18 @@ struct AddMealView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingBarcodeScanner) {
+            BarcodeScannerView(
+                onBarcodeScanned: { barcode in
+                    Task {
+                        await handleBarcodeScan(barcode)
+                    }
+                },
+                onDismiss: {
+                    showingBarcodeScanner = false
+                }
+            )
+        }
         .alert("Error", isPresented: $showingAlert) {
             Button("OK") { }
         } message: {
@@ -79,7 +99,11 @@ struct AddMealView: View {
                    let image = UIImage(data: data) {
                     await MainActor.run {
                         self.mealImage = image
+                        self.isRecognizingFood = true
                     }
+                    
+                    // Use Core ML to recognize food in the image
+                    await recognizeFoodInImage(image)
                 }
             }
         }
@@ -90,6 +114,7 @@ struct AddMealView: View {
             calculateTotalMacros()
         }
         .onAppear {
+            updateQuantityTextFromValue()
             calculateTotalMacros()
         }
     }
@@ -121,15 +146,50 @@ struct AddMealView: View {
                     
                     Spacer()
                     
-                    Stepper(value: $quantity, in: 1...100, step: 1) {
-                        Text(String(format: "%.0f", quantity))
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.blue)
+                    HStack(spacing: 4) {
+                        TextField("1", text: $quantityText)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                            .focused($isQuantityFocused)
+                            .onTapGesture {
+                                if quantity == 1.0 {
+                                    quantityText = ""
+                                }
+                            }
+                            .onChange(of: quantityText) { _, newValue in
+                                if let doubleValue = Double(newValue) {
+                                    quantity = doubleValue
+                                    calculateTotalMacros()
+                                } else if newValue.isEmpty {
+                                    quantity = 1.0
+                                    calculateTotalMacros()
+                                }
+                            }
+                            .onChange(of: isQuantityFocused) { _, focused in
+                                if focused && quantity == 1.0 {
+                                    quantityText = ""
+                                } else if !focused && quantityText.isEmpty {
+                                    quantity = 1.0
+                                    calculateTotalMacros()
+                                }
+                            }
+                            .onChange(of: quantity) { _, newValue in
+                                if !isQuantityFocused {
+                                    updateQuantityTextFromValue()
+                                }
+                            }
+                            .onAppear {
+                                updateQuantityTextFromValue()
+                            }
+                        
+                        Text("serving\(quantity == 1.0 ? "" : "s")")
+                            .foregroundColor(.secondary)
+                            .frame(width: 60, alignment: .leading)
                     }
                 }
                 
-                Text(String(format: "This will multiply all nutrition values by %.0f", quantity))
+                Text(String(format: "This will multiply all nutrition values by %.1f", quantity))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -182,6 +242,17 @@ struct AddMealView: View {
                                 .foregroundColor(.white)
                                 .cornerRadius(10)
                         }
+                        
+                        Button(action: {
+                            showingBarcodeScanner = true
+                        }) {
+                            Label("Scan Barcode", systemImage: "barcode.viewfinder")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.orange)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
+                        }
                     }
                 }
             }
@@ -190,26 +261,131 @@ struct AddMealView: View {
     
     private var ingredientsSection: some View {
         Section("Ingredients") {
+            // Macro calculation toggle
+            Toggle("Calculate macros from ingredients", isOn: $calculateMacrosFromIngredients)
+            
             ForEach(ingredients.indices, id: \.self) { index in
-                HStack {
-                    TextField("Ingredient \(index + 1)", text: $ingredients[index])
-                    
-                    if ingredients.count > 1 {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        TextField("Ingredient \(index + 1)", text: $ingredients[index])
                         Button(action: {
-                            ingredients.remove(at: index)
+                            showingIngredientPicker = true
                         }) {
-                            Image(systemName: "minus.circle.fill")
-                                .foregroundColor(.red)
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.blue)
                         }
+                        
+                        if ingredients.count > 1 {
+                            Button(action: {
+                                ingredients.remove(at: index)
+                                if ingredientMacros.count > index {
+                                    ingredientMacros.remove(at: index)
+                                }
+                            }) {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundColor(.red)
+                            }
+                        }
+                    }
+                    
+                    if calculateMacrosFromIngredients && !ingredients[index].isEmpty && index < ingredientMacros.count {
+                        Text("Ingredient macros (per serving):")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        HStack {
+                            TextField("Calories", value: Binding(
+                                get: { index < ingredientMacros.count ? ingredientMacros[index].calories : 0 },
+                                set: { if index < ingredientMacros.count { ingredientMacros[index].calories = $0 } }
+                            ), format: .number)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .frame(width: 60)
+                            Text("kcal")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Spacer()
+                            
+                            TextField("Protein", value: Binding(
+                                get: { index < ingredientMacros.count ? ingredientMacros[index].protein : 0 },
+                                set: { if index < ingredientMacros.count { ingredientMacros[index].protein = $0 } }
+                            ), format: .number)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .frame(width: 60)
+                            Text("g")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Spacer()
+                            
+                            TextField("Carbs", value: Binding(
+                                get: { index < ingredientMacros.count ? ingredientMacros[index].carbohydrates : 0 },
+                                set: { if index < ingredientMacros.count { ingredientMacros[index].carbohydrates = $0 } }
+                            ), format: .number)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .frame(width: 60)
+                            Text("g")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Spacer()
+                            
+                            TextField("Fat", value: Binding(
+                                get: { index < ingredientMacros.count ? ingredientMacros[index].fat : 0 },
+                                set: { if index < ingredientMacros.count { ingredientMacros[index].fat = $0 } }
+                            ), format: .number)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .frame(width: 60)
+                            Text("g")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .font(.caption)
                     }
                 }
             }
             
             Button(action: {
                 ingredients.append("")
+                ingredientMacros.append(MacroNutrition())
             }) {
                 Label("Add Ingredient", systemImage: "plus.circle")
                     .foregroundColor(.blue)
+            }
+        }
+        .sheet(isPresented: $showingIngredientPicker) {
+            IngredientPickerView(
+                searchText: $searchText,
+                onIngredientSelected: { ingredient in
+                    // Track this ingredient as recently used
+                    dataManager.addRecentIngredient(ingredient)
+                    
+                    if let lastIndex = ingredients.lastIndex(where: { $0.isEmpty }) {
+                        ingredients[lastIndex] = ingredient.name
+                        // Ensure ingredientMacros array is large enough
+                        if lastIndex < ingredientMacros.count {
+                            ingredientMacros[lastIndex] = ingredient.macros
+                        } else {
+                            // Pad with empty macros if needed
+                            while ingredientMacros.count <= lastIndex {
+                                ingredientMacros.append(MacroNutrition())
+                            }
+                            ingredientMacros[lastIndex] = ingredient.macros
+                        }
+                    } else {
+                        ingredients.append(ingredient.name)
+                        ingredientMacros.append(ingredient.macros)
+                    }
+                    showingIngredientPicker = false
+                }
+            )
+        }
+        .onChange(of: calculateMacrosFromIngredients) { _, _ in
+            updateMacrosFromIngredients()
+        }
+        .onChange(of: ingredientMacros) { _, _ in
+            if calculateMacrosFromIngredients {
+                updateMacrosFromIngredients()
             }
         }
     }
@@ -222,18 +398,22 @@ struct AddMealView: View {
     }
     
     private var nutritionInputSection: some View {
-        Section("Nutrition Information (per unit)") {
-            MacroInputField(title: "Calories", value: $baseMacros.calories, unit: "kcal")
-            MacroInputField(title: "Protein", value: $baseMacros.protein, unit: "g")
-            MacroInputField(title: "Carbohydrates", value: $baseMacros.carbohydrates, unit: "g")
-            MacroInputField(title: "Fat", value: $baseMacros.fat, unit: "g")
-            MacroInputField(title: "Sugar", value: $baseMacros.sugar, unit: "g")
-            MacroInputField(title: "Fiber", value: $baseMacros.fiber, unit: "g")
+        Group {
+            if !calculateMacrosFromIngredients {
+                Section("Nutrition Information (per unit)") {
+                    MacroInputField(title: "Calories", value: $baseMacros.calories, unit: "kcal")
+                    MacroInputField(title: "Protein", value: $baseMacros.protein, unit: "g")
+                    MacroInputField(title: "Carbohydrates", value: $baseMacros.carbohydrates, unit: "g")
+                    MacroInputField(title: "Fat", value: $baseMacros.fat, unit: "g")
+                    MacroInputField(title: "Sugar", value: $baseMacros.sugar, unit: "g")
+                    MacroInputField(title: "Fiber", value: $baseMacros.fiber, unit: "g")
+                }
+            }
         }
     }
     
     private var totalNutritionSection: some View {
-        Section(String(format: "Total Nutrition (%.0f units)", quantity)) {
+        Section(String(format: "Total Nutrition (%.1f servings)", quantity)) {
             HStack {
                 Text("Calories")
                 Spacer()
@@ -304,21 +484,63 @@ struct AddMealView: View {
         mealImage = nil
         selectedImage = nil
         ingredients = [""]
+        ingredientMacros = [MacroNutrition()]
         cookingInstructions = ""
         baseMacros = MacroNutrition()
         quantity = 1.0
+        quantityText = ""
         macros = MacroNutrition()
+        calculateMacrosFromIngredients = false
     }
     
     private func calculateTotalMacros() {
+        if calculateMacrosFromIngredients {
+            updateMacrosFromIngredients()
+        } else {
+            macros = MacroNutrition(
+                calories: baseMacros.calories * quantity,
+                protein: baseMacros.protein * quantity,
+                carbohydrates: baseMacros.carbohydrates * quantity,
+                fat: baseMacros.fat * quantity,
+                sugar: baseMacros.sugar * quantity,
+                fiber: baseMacros.fiber * quantity
+            )
+        }
+    }
+    
+    private func updateMacrosFromIngredients() {
+        let totalIngredientMacros = ingredientMacros.reduce(MacroNutrition()) { total, ingredientMacro in
+            MacroNutrition(
+                calories: total.calories + ingredientMacro.calories,
+                protein: total.protein + ingredientMacro.protein,
+                carbohydrates: total.carbohydrates + ingredientMacro.carbohydrates,
+                fat: total.fat + ingredientMacro.fat,
+                sugar: total.sugar + ingredientMacro.sugar,
+                fiber: total.fiber + ingredientMacro.fiber
+            )
+        }
+        
         macros = MacroNutrition(
-            calories: baseMacros.calories * quantity,
-            protein: baseMacros.protein * quantity,
-            carbohydrates: baseMacros.carbohydrates * quantity,
-            fat: baseMacros.fat * quantity,
-            sugar: baseMacros.sugar * quantity,
-            fiber: baseMacros.fiber * quantity
+            calories: totalIngredientMacros.calories * quantity,
+            protein: totalIngredientMacros.protein * quantity,
+            carbohydrates: totalIngredientMacros.carbohydrates * quantity,
+            fat: totalIngredientMacros.fat * quantity,
+            sugar: totalIngredientMacros.sugar * quantity,
+            fiber: totalIngredientMacros.fiber * quantity
         )
+    }
+    
+    private func updateQuantityTextFromValue() {
+        if quantity == 1.0 {
+            quantityText = ""
+        } else {
+            // Handle both integers and decimals properly
+            if quantity.truncatingRemainder(dividingBy: 1) == 0 {
+                quantityText = String(format: "%.0f", quantity)
+            } else {
+                quantityText = String(format: "%.1f", quantity)
+            }
+        }
     }
     
     private func saveMeal() async {
@@ -387,7 +609,95 @@ struct AddMealView: View {
         }
         baseMacros = result.estimatedNutrition
         quantity = 1.0 // Reset to 1 unit when applying scan result
+        updateQuantityTextFromValue()
         calculateTotalMacros()
+    }
+    
+    private func handleBarcodeScan(_ barcode: String) async {
+        isLoading = true
+        showingBarcodeScanner = false
+        
+        do {
+            if let barcodeResult = await dataManager.lookupBarcode(barcode) {
+                await MainActor.run {
+                    // Apply barcode scan results to the form
+                    if mealName.isEmpty {
+                        mealName = barcodeResult.productName
+                    }
+                    
+                    // Use nutrition per 100g as base macros
+                    baseMacros = barcodeResult.nutrition
+                    quantity = 1.0
+                    updateQuantityTextFromValue()
+                    calculateTotalMacros()
+                    
+                    isLoading = false
+                    
+                    // Show success message
+                    alertMessage = "Product found: \(barcodeResult.productName)"
+                    showingAlert = true
+                }
+            } else {
+                await MainActor.run {
+                    isLoading = false
+                    alertMessage = "Product not found in database"
+                    showingAlert = true
+                }
+            }
+        } catch {
+            await MainActor.run {
+                isLoading = false
+                alertMessage = "Error looking up product: \(error.localizedDescription)"
+                showingAlert = true
+            }
+        }
+    }
+    
+    private func recognizeFoodInImage(_ image: UIImage) async {
+        // Use the advanced recognizer that can work with custom models
+        let advancedRecognizer = AdvancedCoreMLFoodRecognizer()
+        
+        advancedRecognizer.recognizeFoodAdvanced(in: image) { foodName, confidence, nutrition in
+            Task { @MainActor in
+                self.isRecognizingFood = false
+                
+                if confidence > 0.3 { // Only apply if confidence is reasonable
+                    if self.mealName.isEmpty {
+                        self.mealName = foodName
+                    }
+                    
+                    // Use provided nutrition or estimate if not available
+                    let estimatedNutrition = nutrition ?? MacroNutrition(
+                        calories: estimateCalories(for: foodName),
+                        protein: estimateProtein(for: foodName),
+                        carbohydrates: estimateCarbs(for: foodName),
+                        fat: estimateFat(for: foodName),
+                        sugar: estimateCarbs(for: foodName) * 0.3,
+                        fiber: estimateCarbs(for: foodName) * 0.1
+                    )
+                    
+                    // Update base macros if they're currently empty
+                    if self.baseMacros.calories == 0 && self.baseMacros.protein == 0 && 
+                       self.baseMacros.carbohydrates == 0 && self.baseMacros.fat == 0 {
+                        self.baseMacros = estimatedNutrition
+                        self.calculateTotalMacros()
+                    }
+                    
+                    // Show success message with confidence and model info
+                    let confidencePercentage = Int(confidence * 100)
+                    let modelInfo = advancedRecognizer.isModelLoaded ? " (Custom Model)" : " (Vision Framework)"
+                    self.alertMessage = "Recognized: \(foodName) (\(confidencePercentage)% confidence\(modelInfo))\nEstimated nutrition applied."
+                    self.showingAlert = true
+                } else {
+                    // Low confidence - just set name if empty
+                    if self.mealName.isEmpty {
+                        self.mealName = foodName
+                    }
+                    self.alertMessage = "Recognized: \(foodName) (low confidence)\nPlease verify and adjust nutrition values."
+                    self.showingAlert = true
+                }
+            }
+        }
     }
 }
 
@@ -571,6 +881,238 @@ struct FoodScannerView: View {
             
             isScanning = false
             scanResult = mockResult
+        }
+    }
+}
+
+// MARK: - Ingredient Picker View
+struct IngredientPickerView: View {
+    @EnvironmentObject var dataManager: DataManager
+    @Binding var searchText: String
+    let onIngredientSelected: (Ingredient) -> Void
+    
+    @State private var filteredIngredients: [Ingredient] = []
+    @State private var selectedCategory: IngredientCategory? = nil
+    @State private var isSearchingOnline = false
+    @State private var onlineSearchResults: [Ingredient] = []
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Search bar
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.gray)
+                    TextField("Search ingredients...", text: $searchText)
+                    
+                    if !searchText.isEmpty {
+                        Button(action: {
+                            Task {
+                                await searchOnline()
+                            }
+                        }) {
+                            if isSearchingOnline {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "globe")
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                        .disabled(isSearchingOnline)
+                    }
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(10)
+                .padding(.horizontal)
+                
+                // Category filter
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        Button("All") {
+                            selectedCategory = nil
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(selectedCategory == nil ? Color.blue : Color(.systemGray5))
+                        .foregroundColor(selectedCategory == nil ? .white : .primary)
+                        .cornerRadius(20)
+                        
+                        ForEach(IngredientCategory.allCases, id: \.self) { category in
+                            Button(category.displayName) {
+                                selectedCategory = category
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(selectedCategory == category ? Color.blue : Color(.systemGray5))
+                            .foregroundColor(selectedCategory == category ? .white : .primary)
+                            .cornerRadius(20)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+                .padding(.vertical, 8)
+                
+                // Ingredients list
+                List {
+                    // Recent ingredients (show when not searching)
+                    if searchText.isEmpty {
+                        let recentIngredients = dataManager.getRecentIngredients()
+                        if !recentIngredients.isEmpty {
+                            Section("Recently Used") {
+                                ForEach(recentIngredients) { ingredient in
+                                    ingredientRow(ingredient)
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Local ingredients
+                    if !filteredIngredients.isEmpty {
+                        Section("Local Ingredients") {
+                            ForEach(filteredIngredients) { ingredient in
+                                ingredientRow(ingredient)
+                            }
+                        }
+                    }
+                    
+                    // Online search results
+                    if !onlineSearchResults.isEmpty {
+                        Section("Online Results") {
+                            ForEach(onlineSearchResults) { ingredient in
+                                ingredientRow(ingredient)
+                            }
+                        }
+                    }
+                    
+                    // Empty state
+                    if filteredIngredients.isEmpty && onlineSearchResults.isEmpty && !searchText.isEmpty {
+                        Section {
+                            VStack(spacing: 16) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.largeTitle)
+                                    .foregroundColor(.gray)
+                                Text("No ingredients found")
+                                    .foregroundColor(.secondary)
+                                Text("Try searching online or use a different term")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Select Ingredient")
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                Task {
+                    await dataManager.loadIngredients()
+                    updateFilteredIngredients()
+                }
+            }
+            .onChange(of: searchText) { _, _ in
+                updateFilteredIngredients()
+                // Clear online results when search text changes
+                if onlineSearchResults.isEmpty {
+                    // Only clear if we haven't loaded online results yet
+                }
+            }
+            .onChange(of: selectedCategory) { _, _ in
+                updateFilteredIngredients()
+            }
+        }
+    }
+    
+    private func ingredientRow(_ ingredient: Ingredient) -> some View {
+        Button(action: {
+            onIngredientSelected(ingredient)
+        }) {
+            HStack {
+                Text(ingredient.category.icon)
+                    .font(.title2)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(ingredient.name)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    HStack {
+                        Text("\(Int(ingredient.macros.calories)) cal")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Text("•")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Text("\(Int(ingredient.macros.protein))g protein")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Text("•")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Text("\(Int(ingredient.macros.carbohydrates))g carbs")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Text("•")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Text("\(Int(ingredient.macros.fat))g fat")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                Spacer()
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private func updateFilteredIngredients() {
+        var ingredients = dataManager.ingredients
+        
+        if !searchText.isEmpty {
+            ingredients = dataManager.searchIngredients(query: searchText)
+        }
+        
+        if let category = selectedCategory {
+            ingredients = ingredients.filter { $0.category == category }
+        }
+        
+        filteredIngredients = ingredients
+        
+        // Clear online results when updating local filter
+        if searchText.isEmpty {
+            onlineSearchResults = []
+        }
+    }
+    
+    private func searchOnline() async {
+        guard !searchText.isEmpty else { return }
+        
+        isSearchingOnline = true
+        
+        do {
+            let results = await dataManager.searchUSDAFoods(query: searchText)
+            await MainActor.run {
+                onlineSearchResults = results.filter { result in
+                    // Avoid duplicates with local ingredients
+                    !filteredIngredients.contains { $0.name.lowercased() == result.name.lowercased() }
+                }
+                isSearchingOnline = false
+            }
+        } catch {
+            await MainActor.run {
+                isSearchingOnline = false
+            }
         }
     }
 }

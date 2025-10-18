@@ -319,6 +319,111 @@ struct FoodScanResult: Identifiable, Codable {
     }
 }
 
+// MARK: - Barcode Scan Result
+struct BarcodeScanResult: Identifiable, Codable {
+    let id: UUID
+    let barcode: String
+    let productName: String
+    let brand: String?
+    let imageURL: String?
+    let nutrition: MacroNutrition
+    let servingSize: String?
+    let scanDate: Date
+    
+    init(barcode: String, productName: String, brand: String? = nil, imageURL: String? = nil, nutrition: MacroNutrition, servingSize: String? = nil) {
+        self.id = UUID()
+        self.barcode = barcode
+        self.productName = productName
+        self.brand = brand
+        self.imageURL = imageURL
+        self.nutrition = nutrition
+        self.servingSize = servingSize
+        self.scanDate = Date()
+    }
+}
+
+// MARK: - Recipe Collection Models
+struct RecipeCollection: Codable, Identifiable {
+    let id: String
+    let userId: String
+    let name: String
+    let description: String?
+    let imageURL: String?
+    let ingredients: [String]
+    let instructions: [String]
+    let servingSize: Int
+    let prepTime: Int? // in minutes
+    let cookTime: Int? // in minutes
+    let macros: MacroNutrition
+    let tags: [String]
+    let isPublic: Bool
+    let createdAt: Date
+    let updatedAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case name
+        case description
+        case imageURL = "image_url"
+        case ingredients
+        case instructions
+        case servingSize = "serving_size"
+        case prepTime = "prep_time"
+        case cookTime = "cook_time"
+        case macros
+        case tags
+        case isPublic = "is_public"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+    
+    init(id: String, userId: String, name: String, description: String? = nil, imageURL: String? = nil, ingredients: [String], instructions: [String], servingSize: Int, prepTime: Int? = nil, cookTime: Int? = nil, macros: MacroNutrition, tags: [String] = [], isPublic: Bool = true, createdAt: Date = Date(), updatedAt: Date = Date()) {
+        self.id = id
+        self.userId = userId
+        self.name = name
+        self.description = description
+        self.imageURL = imageURL
+        self.ingredients = ingredients
+        self.instructions = instructions
+        self.servingSize = servingSize
+        self.prepTime = prepTime
+        self.cookTime = cookTime
+        self.macros = macros
+        self.tags = tags
+        self.isPublic = isPublic
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+struct RecipeRating: Codable, Identifiable {
+    let id: String
+    let recipeId: String
+    let userId: String
+    let rating: Int // 1-5 stars
+    let review: String?
+    let createdAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case recipeId = "recipe_id"
+        case userId = "user_id"
+        case rating
+        case review
+        case createdAt = "created_at"
+    }
+    
+    init(id: String, recipeId: String, userId: String, rating: Int, review: String? = nil, createdAt: Date = Date()) {
+        self.id = id
+        self.recipeId = recipeId
+        self.userId = userId
+        self.rating = rating
+        self.review = review
+        self.createdAt = createdAt
+    }
+}
+
 // MARK: - Friend Request
 struct FriendRequest: Identifiable, Codable {
     let id: String
@@ -452,5 +557,253 @@ struct DailyStats: Identifiable, Codable {
     
     var remainingSugar: Double {
         return max(goalSugar - totalSugar, 0)
+    }
+}
+
+// MARK: - Ingredient Model
+struct Ingredient: Codable, Identifiable {
+    let id: String
+    let name: String
+    let macros: MacroNutrition
+    let category: IngredientCategory
+    let createdAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case macros
+        case category
+        case createdAt = "created_at"
+    }
+    
+    init(id: String, name: String, macros: MacroNutrition, category: IngredientCategory = .other, createdAt: Date = Date()) {
+        self.id = id
+        self.name = name
+        self.macros = macros
+        self.category = category
+        self.createdAt = createdAt
+    }
+}
+
+// MARK: - Ingredient Category
+enum IngredientCategory: String, CaseIterable, Codable {
+    case protein = "protein"
+    case carbs = "carbs"
+    case fats = "fats"
+    case vegetables = "vegetables"
+    case fruits = "fruits"
+    case dairy = "dairy"
+    case grains = "grains"
+    case spices = "spices"
+    case other = "other"
+    
+    var displayName: String {
+        switch self {
+        case .protein: return "Protein"
+        case .carbs: return "Carbohydrates"
+        case .fats: return "Fats & Oils"
+        case .vegetables: return "Vegetables"
+        case .fruits: return "Fruits"
+        case .dairy: return "Dairy"
+        case .grains: return "Grains"
+        case .spices: return "Spices & Seasonings"
+        case .other: return "Other"
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .protein: return "🥩"
+        case .carbs: return "🌾"
+        case .fats: return "🥑"
+        case .vegetables: return "🥕"
+        case .fruits: return "🍎"
+        case .dairy: return "🥛"
+        case .grains: return "🍞"
+        case .spices: return "🧂"
+        case .other: return "📦"
+        }
+    }
+}
+
+// MARK: - User Ingredient Preset
+struct UserIngredientPreset: Codable, Identifiable {
+    let id: String
+    let userId: String
+    let name: String
+    let macros: MacroNutrition
+    let category: IngredientCategory
+    let createdAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case name
+        case macros
+        case category
+        case createdAt = "created_at"
+    }
+    
+    init(id: String, userId: String, name: String, macros: MacroNutrition, category: IngredientCategory = .other, createdAt: Date = Date()) {
+        self.id = id
+        self.userId = userId
+        self.name = name
+        self.macros = macros
+        self.category = category
+        self.createdAt = createdAt
+    }
+}
+
+// MARK: - USDA FoodData Central API Models
+struct USDAApiResponse: Codable {
+    let foods: [USDAFood]
+    let totalHits: Int
+    let currentPage: Int
+    let totalPages: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case foods
+        case totalHits
+        case currentPage
+        case totalPages
+    }
+}
+
+struct USDAFood: Codable {
+    let fdcId: Int
+    let description: String
+    let brandOwner: String?
+    let brandedFoodCategory: String?
+    let ingredients: String?
+    let foodNutrients: [USDAFoodNutrient]
+    let servingSize: Double?
+    let servingSizeUnit: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case fdcId
+        case description
+        case brandOwner
+        case brandedFoodCategory
+        case ingredients
+        case foodNutrients
+        case servingSize
+        case servingSizeUnit
+    }
+}
+
+struct USDAFoodNutrient: Codable {
+    let nutrient: USDANutrient
+    let amount: Double
+    
+    enum CodingKeys: String, CodingKey {
+        case nutrient
+        case amount
+    }
+}
+
+struct USDANutrient: Codable {
+    let id: Int
+    let number: String
+    let name: String
+    let rank: Int
+    let unitName: String
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case number
+        case name
+        case rank
+        case unitName
+    }
+}
+
+// MARK: - Local Storage for Ingredients
+struct LocalIngredientsManager {
+    private static let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+    private static let ingredientsURL = documentsDirectory.appendingPathComponent("ingredients.json")
+    private static let recentIngredientsURL = documentsDirectory.appendingPathComponent("recent_ingredients.json")
+    private static let lastUpdateKey = "lastIngredientsUpdate"
+    private static let recentIngredientsKey = "recentIngredients"
+    
+    static func saveIngredients(_ ingredients: [Ingredient]) {
+        do {
+            let data = try JSONEncoder().encode(ingredients)
+            try data.write(to: ingredientsURL)
+            UserDefaults.standard.set(Date(), forKey: lastUpdateKey)
+            print("Saved \(ingredients.count) ingredients locally")
+        } catch {
+            print("Failed to save ingredients locally: \(error)")
+        }
+    }
+    
+    static func loadIngredients() -> [Ingredient] {
+        do {
+            let data = try Data(contentsOf: ingredientsURL)
+            let ingredients = try JSONDecoder().decode([Ingredient].self, from: data)
+            print("Loaded \(ingredients.count) ingredients from local storage")
+            return ingredients
+        } catch {
+            print("Failed to load local ingredients: \(error)")
+            return []
+        }
+    }
+    
+    static func shouldUpdateIngredients() -> Bool {
+        guard let lastUpdate = UserDefaults.standard.object(forKey: lastUpdateKey) as? Date else {
+            return true // Never updated, should update
+        }
+        
+        // Update once per day
+        let daysSinceUpdate = Calendar.current.dateComponents([.day], from: lastUpdate, to: Date()).day ?? 0
+        return daysSinceUpdate >= 1
+    }
+    
+    static func hasLocalIngredients() -> Bool {
+        return FileManager.default.fileExists(atPath: ingredientsURL.path)
+    }
+    
+    // MARK: - Recent Ingredients Management
+    static func addRecentIngredient(_ ingredient: Ingredient) {
+        var recentIngredients = loadRecentIngredients()
+        
+        // Remove if already exists (to update order)
+        recentIngredients.removeAll { $0.id == ingredient.id }
+        
+        // Add to beginning
+        recentIngredients.insert(ingredient, at: 0)
+        
+        // Keep only last 20
+        if recentIngredients.count > 20 {
+            recentIngredients = Array(recentIngredients.prefix(20))
+        }
+        
+        saveRecentIngredients(recentIngredients)
+    }
+    
+    static func loadRecentIngredients() -> [Ingredient] {
+        do {
+            let data = try Data(contentsOf: recentIngredientsURL)
+            let ingredients = try JSONDecoder().decode([Ingredient].self, from: data)
+            return ingredients
+        } catch {
+            return []
+        }
+    }
+    
+    private static func saveRecentIngredients(_ ingredients: [Ingredient]) {
+        do {
+            let data = try JSONEncoder().encode(ingredients)
+            try data.write(to: recentIngredientsURL)
+        } catch {
+            print("Failed to save recent ingredients: \(error)")
+        }
+    }
+    
+    static func clearRecentIngredients() {
+        do {
+            try FileManager.default.removeItem(at: recentIngredientsURL)
+        } catch {
+            print("Failed to clear recent ingredients: \(error)")
+        }
     }
 }
